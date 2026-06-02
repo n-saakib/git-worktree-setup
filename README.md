@@ -75,36 +75,38 @@ Detects whether you're on macOS and adds the alias to `.zshrc` (default since Ca
 
 ### Windows
 
-Open PowerShell and run:
+Open Command Prompt or PowerShell and run:
 
-```powershell
+```bat
 git clone <repo-url> git-worktree-setup
 cd git-worktree-setup\windows
-powershell -ExecutionPolicy Bypass -File .\setup-alias.ps1
-. $PROFILE
+setup-alias.bat
 ```
-
-Prompts for an alias name (default: `gwt`), checks for conflicts with existing aliases, and adds a function to your PowerShell profile.
 
 To use defaults silently:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\setup-alias.ps1 -y
+```bat
+setup-alias.bat -y
 ```
 
-> **Why `-ExecutionPolicy Bypass`?** Windows blocks unsigned PowerShell scripts by default. The bypass flag allows running this script for the current invocation only — it does not change your system policy.
->
-> Alternatively you can use the provided `.bat` wrappers which handle this automatically:
+The `.bat` wrappers handle Windows execution policy automatically — no extra configuration needed.
+
+Prompts for an alias name (default: `gwt`), checks for conflicts with existing aliases, and adds a function to your PowerShell profile. Reload the profile when done:
+
+```powershell
+. $PROFILE
+```
+
+> **Prefer running PowerShell directly?** Use `-ExecutionPolicy Bypass`:
+> ```powershell
+> powershell -ExecutionPolicy Bypass -File .\setup-alias.ps1
+> powershell -ExecutionPolicy Bypass -File .\setup-alias.ps1 -y
 > ```
-> windows\setup-alias.bat
-> windows\setup-alias.bat -y
-> ```
->
-> Or allow signed local scripts permanently (once):
+> Or allow signed local scripts permanently (once) so you can run `.ps1` files directly:
 > ```powershell
 > Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+> .\setup-alias.ps1
 > ```
-> After that you can run `.\setup-alias.ps1` directly.
 
 > **Note:** Creating symlinks on Windows requires either **Developer Mode** enabled (`Settings > System > Developer Mode`) or running PowerShell **as Administrator**.
 
@@ -121,8 +123,11 @@ source ~/.bashrc   # or ~/.zshrc
 ```
 
 **Windows:**
+```bat
+windows\remove-alias.bat
+```
+Then reload the profile:
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\windows\remove-alias.ps1
 . $PROFILE
 ```
 
