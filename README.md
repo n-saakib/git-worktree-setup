@@ -48,8 +48,8 @@ This tool wraps that workflow into a single interactive command that works from 
 ### Linux
 
 ```bash
-git clone <repo-url> repo-tools
-cd repo-tools
+git clone <repo-url> git-worktree-setup
+cd git-worktree-setup
 ./setup-alias.sh
 source ~/.bashrc
 ```
@@ -65,8 +65,8 @@ To skip the alias prompt and use the default:
 ### macOS
 
 ```bash
-git clone <repo-url> repo-tools
-cd repo-tools
+git clone <repo-url> git-worktree-setup
+cd git-worktree-setup
 ./setup-alias.sh
 source ~/.zshrc   # or ~/.bash_profile if using bash
 ```
@@ -78,8 +78,8 @@ Detects whether you're on macOS and adds the alias to `.zshrc` (default since Ca
 Open PowerShell and run:
 
 ```powershell
-git clone <repo-url> repo-tools
-cd repo-tools\windows
+git clone <repo-url> git-worktree-setup
+cd git-worktree-setup\windows
 .\setup-alias.ps1
 . $PROFILE
 ```
@@ -307,7 +307,7 @@ All confirmation prompts default to **yes** — press Enter to accept.
 ## Project Structure
 
 ```
-repo-tools/
+git-worktree-setup/
 ├── setup-alias.sh               # Linux & macOS: creates shell alias
 ├── remove-alias.sh              # Linux & macOS: removes shell alias
 ├── linux/
