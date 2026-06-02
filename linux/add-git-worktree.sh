@@ -10,7 +10,11 @@ find_root() {
     local current_dir="$PWD"
     while [[ "$current_dir" != "/" ]]; do
         if [[ -d "$current_dir/.bare" ]]; then echo "$current_dir"; return 0; fi
-        if [[ -d "$current_dir/.git" ]];  then echo "$current_dir"; return 0; fi
+        # Skip .git check when inside a .bare directory — bare repos can contain
+        # a .git subdir (e.g. created by GitKraken), which is not the worktree root.
+        if [[ -d "$current_dir/.git" ]] && [[ "$(basename "$current_dir")" != ".bare" ]]; then
+            echo "$current_dir"; return 0
+        fi
         current_dir="$(dirname "$current_dir")"
     done
     echo "" >&2; return 1

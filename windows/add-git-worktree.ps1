@@ -33,7 +33,11 @@ function Find-Root {
     $root = (Split-Path $current -Qualifier) + "\"
     while ($current -ne $root) {
         if (Test-Path (Join-Path $current ".bare")) { return $current }
-        if (Test-Path (Join-Path $current ".git"))  { return $current }
+        # Skip .git check when inside a .bare directory — bare repos can contain
+        # a .git subdir (e.g. created by GitKraken), which is not the worktree root.
+        if ((Test-Path (Join-Path $current ".git")) -and (Split-Path $current -Leaf) -ne ".bare") {
+            return $current
+        }
         $current = Split-Path $current -Parent
     }
     return $null
