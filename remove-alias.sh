@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 # Removes the git-worktree alias from shell config files
+# Detects the alias by script path, regardless of what name it was given
 
 set -e
 
@@ -31,24 +32,25 @@ REMOVED=false
 for config in "${SHELL_CONFIGS[@]}"; do
     [[ -f "$config" ]] || continue
 
-    if grep -qF "alias git-worktree=" "$config" 2>/dev/null; then
-        # Remove the comment line and alias line together
+    if grep -qE "^alias [^=]+='.*add-git-worktree\.sh'" "$config" 2>/dev/null; then
+        alias_name="$(grep -E "^alias [^=]+='.*add-git-worktree\.sh'" "$config" | sed "s/^alias \([^=]*\)=.*/\1/" | head -1)"
+
         if [[ "$OS" == "Darwin"* ]]; then
             sed -i '' '/^# Git worktree management tools$/d' "$config"
-            sed -i '' '/^alias git-worktree=/d' "$config"
+            sed -i '' "/^alias [^=]*='.*add-git-worktree\.sh'/d" "$config"
         else
             sed -i '/^# Git worktree management tools$/d' "$config"
-            sed -i '/^alias git-worktree=/d' "$config"
+            sed -i "/^alias [^=]*='.*add-git-worktree\.sh'/d" "$config"
         fi
-        echo "✓ Removed alias from $config"
+        echo "✓ Removed alias '$alias_name' from $config"
         REMOVED=true
     else
-        echo "- No alias found in $config, skipping"
+        echo "- No git-worktree alias found in $config, skipping"
     fi
 done
 
 if [[ "$REMOVED" == false ]]; then
-    echo "No alias found in any shell config file. Nothing to remove."
+    echo "No git-worktree alias found in any shell config file. Nothing to remove."
     exit 0
 fi
 

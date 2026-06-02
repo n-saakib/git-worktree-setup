@@ -1,4 +1,5 @@
 # Removes the git-worktree alias from the PowerShell profile
+# Detects the alias by script path, regardless of what name it was given
 
 if (-not (Test-Path $PROFILE)) {
     Write-Host "No PowerShell profile found at $PROFILE. Nothing to remove."
@@ -7,16 +8,34 @@ if (-not (Test-Path $PROFILE)) {
 
 $profileContent = Get-Content $PROFILE -Raw -ErrorAction SilentlyContinue
 
-if (-not ($profileContent -match "function git-worktree")) {
+if (-not ($profileContent -match 'add-git-worktree\.ps1')) {
     Write-Host "No git-worktree alias found in $PROFILE. Nothing to remove."
     exit 0
 }
 
-# Remove the comment line, function block, and surrounding blank line
-$profileContent = $profileContent -replace '(?s)\r?\n# Git worktree management tools\r?\nfunction git-worktree \{[^}]*\}', ''
+# Extract the alias name for the confirmation message
+$aliasName = "unknown"
+if ($profileContent -match '(?m)^function (\S+)') {
+    # Find the function that contains our script reference
+    $lines = $profileContent -split "`n"
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^function (\S+)') {
+            $candidate = $Matches[1]
+            # Check if this function block contains our script
+            $block = ($lines[$i..([Math]::Min($i+5, $lines.Count-1))] -join "`n")
+            if ($block -match 'add-git-worktree\.ps1') {
+                $aliasName = $candidate
+                break
+            }
+        }
+    }
+}
+
+# Remove the comment + function block
+$profileContent = $profileContent -replace '(?s)\r?\n# Git worktree management tools\r?\nfunction \S+ \{[^}]*\}', ''
 
 Set-Content $PROFILE $profileContent
-Write-Host "✓ Removed git-worktree function from $PROFILE"
+Write-Host "✓ Removed alias '$aliasName' from $PROFILE"
 
 Write-Host ""
 Write-Host "Alias removed successfully!"

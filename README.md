@@ -14,6 +14,7 @@ A cross-platform CLI tool to create and manage [Git worktrees](https://git-scm.c
   - [Windows](#windows)
 - [Uninstall](#uninstall)
 - [Commands](#commands)
+- [Flags](#flags)
 - [Usage Examples](#usage-examples)
 - [How It Works](#how-it-works)
 - [Project Structure](#project-structure)
@@ -37,6 +38,8 @@ This tool wraps that workflow into a single interactive command that works from 
 - **Works from anywhere** — auto-detects repo root by walking up to find `.bare` or `.git`
 - **Bare repo aware** — designed for monorepo setups with a `.bare` directory
 - **Cross-platform** — separate scripts for Linux, macOS, and Windows
+- **Customisable alias** — choose your own alias name at setup (default: `gwt`)
+- **Non-interactive mode** — `-y` flag accepts all defaults, only prompting for required values
 
 ---
 
@@ -51,7 +54,13 @@ cd repo-tools
 source ~/.bashrc
 ```
 
-Detects your shell (bash/zsh), adds the `git-worktree` alias to the appropriate config file, and makes the script executable.
+Detects your shell (bash/zsh), prompts for an alias name (default: `gwt`), checks for conflicts, and adds the alias to your shell config.
+
+To skip the alias prompt and use the default:
+
+```bash
+./setup-alias.sh -y
+```
 
 ### macOS
 
@@ -62,7 +71,7 @@ cd repo-tools
 source ~/.zshrc   # or ~/.bash_profile if using bash
 ```
 
-Detects whether you're on macOS and adds the alias to `.zshrc` (default shell since Catalina) or `.bash_profile`. The macOS script uses `#!/usr/bin/env bash` to pick up Homebrew bash if available, and is safe on the system bash (3.2).
+Detects whether you're on macOS and adds the alias to `.zshrc` (default since Catalina) or `.bash_profile`. The macOS script uses `#!/usr/bin/env bash` to pick up Homebrew bash if available, and is safe on system bash (3.2).
 
 ### Windows
 
@@ -75,7 +84,13 @@ cd repo-tools\windows
 . $PROFILE
 ```
 
-Adds a `git-worktree` function to your PowerShell profile.
+Prompts for an alias name (default: `gwt`), checks for conflicts with existing aliases, and adds a function to your PowerShell profile.
+
+To use defaults silently:
+
+```powershell
+.\setup-alias.ps1 -y
+```
 
 > **Note:** Creating symlinks on Windows requires either **Developer Mode** enabled (`Settings > System > Developer Mode`) or running PowerShell **as Administrator**.
 
@@ -83,7 +98,7 @@ Adds a `git-worktree` function to your PowerShell profile.
 
 ## Uninstall
 
-To remove the `git-worktree` alias from your shell config:
+To remove the alias from your shell config. The script detects the alias by the script path, so it works regardless of what name you gave it.
 
 **Linux / macOS:**
 ```bash
@@ -103,49 +118,94 @@ This removes the alias/function and its comment from your shell config. The scri
 
 ## Commands
 
-All commands are available via the `git-worktree` alias.
+All commands are invoked via your chosen alias (default: `gwt`).
 
 | Command | Short form | Description |
 |---|---|---|
-| `git-worktree worktree` | `git-worktree wt` | Create a new git worktree only |
-| `git-worktree links` | `git-worktree ln` | Setup shared symlinks only |
-| `git-worktree all` | `git-worktree a` | Create worktree and setup symlinks |
-| `git-worktree setup` | `git-worktree a` | Alias for `all` |
-| `git-worktree` | | Show help |
+| `gwt worktree` | `gwt wt` | Create a new git worktree only |
+| `gwt links` | `gwt ln` | Setup shared symlinks only |
+| `gwt all` | `gwt a` | Create worktree and setup symlinks |
+| `gwt setup` | `gwt a` | Alias for `all` |
+| `gwt` | | Show help |
+
+---
+
+## Flags
+
+### `-y` — accept defaults
+
+Available on both `setup-alias` and the worktree commands.
+
+| Value | Has default? | Behaviour with `-y` |
+|---|---|---|
+| Alias name | `gwt` | Uses `gwt`, no prompt |
+| Branch name | folder name | Uses folder name, no prompt |
+| Source branch | `main` | Uses `main`, no prompt |
+| Shared folder | `<root/Shared>` | Uses `Shared/`, no prompt |
+| Branch creation | yes | Auto-confirms, no prompt |
+| Worktree path | **none** | Still prompts — required |
+
+```bash
+gwt a -y                   # prompts only for worktree path
+gwt wt -y                  # prompts only for worktree path
+gwt ln -y                  # no prompts at all
+./setup-alias.sh -y        # uses alias 'gwt' with no prompt
+```
 
 ---
 
 ## Usage Examples
 
-### Create a worktree with shared symlinks (recommended)
+### Setup: choose a custom alias
 
 ```
-$ git-worktree a
+$ ./setup-alias.sh
+
+Enter alias name (default: gwt): wt
+✓ Added alias to ~/.bashrc
+
+Alias 'wt' created successfully!
+```
+
+### Setup: alias already taken
+
+```
+$ ./setup-alias.sh
+
+Enter alias name (default: gwt): ls
+⚠ Alias 'ls' is already taken in ~/.bashrc:
+  alias ls='ls --color=auto'
+Enter a different alias name: wt
+✓ Added alias to ~/.bashrc
+```
+
+### Create a worktree with symlinks (interactive)
+
+```
+$ gwt a
 
 =========================================
   Git Worktree Creation + Symlinks
 =========================================
 
 Enter worktree folder path: worktrees/feature-auth
-Enter branch name to use (leave empty to use folder name):
-Using folder name as branch name: feature-auth
-Enter source branch name (leave empty to use 'main'):
-Using 'main' as source branch
-Enter shared folder path (leave empty to use '<root/Shared>'):
+Enter branch name (default: folder name 'feature-auth'):
+Enter source branch (default: main):
+Enter shared folder path (default: <root/Shared>):
 
 Configuration:
   Root Directory: /projects/my-repo
   Worktree Path:  /projects/my-repo/worktrees/feature-auth
-  Branch Name:    feature-auth
+  Branch:         feature-auth
   Source Branch:  main
 
 Branch 'feature-auth' does not exist
 Create branch 'feature-auth' from 'main'? (Y/n):
 Creating branch 'feature-auth' from 'main'...
-✓ Branch created successfully
+✓ Branch created
 
 Creating worktree at /projects/my-repo/worktrees/feature-auth...
-✓ Worktree created successfully
+✓ Worktree created
 
 Setting up shared symlinks...
 ✓ Created symlink: .claude
@@ -155,66 +215,41 @@ Setting up shared symlinks...
 =========================================
 ✓ Worktree creation + symlinks complete!
 =========================================
+  /projects/my-repo/worktrees/feature-auth
 ```
 
----
-
-### Create a worktree without symlinks
+### Create a worktree with symlinks (non-interactive)
 
 ```
-$ git-worktree wt
+$ gwt a -y
 
-Enter worktree folder path: worktrees/bugfix-login
-Enter branch name to use (leave empty to use folder name): bugfix-login
-Enter source branch name (leave empty to use 'main'): develop
+Enter worktree folder path: worktrees/feature-auth
+Branch name: feature-auth (default)
+Source branch: main (default)
+Shared folder: <root/Shared> (default)
 
 Configuration:
   Root Directory: /projects/my-repo
-  Worktree Path:  /projects/my-repo/worktrees/bugfix-login
-  Branch Name:    bugfix-login
-  Source Branch:  develop
+  Worktree Path:  /projects/my-repo/worktrees/feature-auth
+  Branch:         feature-auth
+  Source Branch:  main
 
-Branch 'bugfix-login' does not exist
-Create branch 'bugfix-login' from 'develop'? (Y/n):
-Creating branch 'bugfix-login' from 'develop'...
-✓ Branch created successfully
+Branch 'feature-auth' does not exist
+Create branch 'feature-auth' from 'main'? (Y/n): Y
+✓ Branch created
 
-Creating worktree at /projects/my-repo/worktrees/bugfix-login...
-✓ Worktree created successfully
-
-=========================================
-✓ Worktree creation complete!
-=========================================
+Creating worktree at /projects/my-repo/worktrees/feature-auth...
+✓ Worktree created
+...
+✓ Worktree creation + symlinks complete!
 ```
 
----
-
-### Setup symlinks in an existing worktree
+### Setup symlinks with a custom path
 
 ```
-$ cd worktrees/feature-auth
-$ git-worktree ln
+$ gwt ln
 
-Enter shared folder path (leave empty to use '<root/Shared>'):
-
-Setting up shared symlinks...
-✓ Created symlink: .claude
-✓ Created symlink: node_modules
-✓ Done! All shared items have been symlinked.
-
-=========================================
-✓ Symlink setup complete!
-=========================================
-```
-
----
-
-### Use a custom shared folder path
-
-```
-$ git-worktree ln
-
-Enter shared folder path (leave empty to use '<root/Shared>'): config/shared
+Enter shared folder path (default: <root/Shared>): config/shared
 
 Setting up shared symlinks...
 ✓ Created symlink: .env
@@ -240,20 +275,26 @@ The script walks up from the current directory looking for `.bare` (bare repo mo
 │   └── node_modules
 └── worktrees/
     ├── main/
-    └── feature-auth/   ← run git-worktree from here, it still works
+    └── feature-auth/   ← run gwt from here, it still works
 ```
 
 ### Shared Symlinks
 
-The `Shared/` folder at the repo root holds files and directories that should be available in every worktree (e.g. shared tooling config, `node_modules`, `.claude` settings). Running `git-worktree ln` from inside a worktree symlinks each item into that worktree's directory.
+The `Shared/` folder at the repo root holds files and directories that should be available in every worktree (e.g. shared tooling config, `node_modules`, `.claude` settings). Running `gwt ln` from inside a worktree symlinks each item into that worktree's directory.
 
 - Dotfiles (`.claude`, `.env`, etc.) are included
 - Items that already exist are skipped, not overwritten
 - A custom path can be specified instead of `Shared/`
 
+### Alias Detection
+
+`remove-alias` finds the alias by scanning for the script path (`add-git-worktree.sh`) in your shell config — not by alias name. This means it correctly removes the alias even if you renamed it.
+
+Similarly, `setup-alias` detects an existing alias pointing to the script and shows you its name before prompting for a new one.
+
 ### Y/N Prompts
 
-All confirmation prompts default to **yes** — press Enter to accept. The following inputs are accepted:
+All confirmation prompts default to **yes** — press Enter to accept.
 
 | Input | Result |
 |---|---|
@@ -267,16 +308,16 @@ All confirmation prompts default to **yes** — press Enter to accept. The follo
 
 ```
 repo-tools/
-├── setup-alias.sh               # Linux & macOS: adds git-worktree alias to shell config
-├── remove-alias.sh              # Linux & macOS: removes git-worktree alias from shell config
+├── setup-alias.sh               # Linux & macOS: creates shell alias
+├── remove-alias.sh              # Linux & macOS: removes shell alias
 ├── linux/
 │   └── add-git-worktree.sh     # Linux script
 ├── mac/
 │   └── add-git-worktree.sh     # macOS script (bash 3.2 safe)
 └── windows/
     ├── add-git-worktree.ps1    # Windows PowerShell script
-    ├── setup-alias.ps1         # Windows: adds git-worktree function to PowerShell profile
-    └── remove-alias.ps1        # Windows: removes git-worktree function from PowerShell profile
+    ├── setup-alias.ps1         # Windows: creates PowerShell alias
+    └── remove-alias.ps1        # Windows: removes PowerShell alias
 ```
 
 ### Platform Differences
