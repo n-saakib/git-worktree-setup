@@ -1,58 +1,46 @@
 #!/usr/bin/env bash
 
-set -e
-
-# Git worktree and symlink management script — macOS compatible
+# Git worktree and symlink management script — macOS
 # Uses /usr/bin/env bash to pick up Homebrew bash 5+ if available
-# Falls back safely to macOS system bash 3.2 (no bash 4+ features)
+# Safe on macOS system bash 3.2 (no bash 4+ features used)
+# Usage: git-worktree <command> [-y]
+#   -y  Accept all defaults without prompting (still prompts for required values)
 
-confirm() {
-    local prompt="$1"
-    local response
-    # zsh-safe prompt via printf + read
-    printf "%s (Y/n): " "$prompt"
-    read -r response
-    response="$(echo "$response" | tr '[:upper:]' '[:lower:]')"
-
-    if [[ -z "$response" ]]; then
-        return 0
-    fi
-
-    case "$response" in
-        y|yes|ye)
-            return 0
-            ;;
-        n|no)
-            return 1
-            ;;
-        *)
-            echo "Invalid response. Please enter y/yes/ye or n/no."
-            confirm "$prompt"
-            return $?
-            ;;
-    esac
-}
+set -e
 
 find_root() {
     local current_dir="$PWD"
     while [[ "$current_dir" != "/" ]]; do
-        if [[ -d "$current_dir/.bare" ]]; then
-            echo "$current_dir"
-            return 0
-        fi
-        if [[ -d "$current_dir/.git" ]]; then
-            echo "$current_dir"
-            return 0
-        fi
+        if [[ -d "$current_dir/.bare" ]]; then echo "$current_dir"; return 0; fi
+        if [[ -d "$current_dir/.git" ]];  then echo "$current_dir"; return 0; fi
         current_dir="$(dirname "$current_dir")"
     done
-    echo "" >&2
-    return 1
+    echo "" >&2; return 1
+}
+
+# confirm <prompt> [auto]
+# Returns 0 for yes, 1 for no. Defaults to yes on empty input or when auto=true.
+confirm() {
+    local prompt="$1" auto="${2:-false}"
+    if [[ "$auto" == true ]]; then
+        printf "%s (Y/n): Y\n" "$prompt"
+        return 0
+    fi
+    local response
+    while true; do
+        printf "%s (Y/n): " "$prompt"
+        read -r response
+        response="$(echo "$response" | tr '[:upper:]' '[:lower:]')"
+        case "${response:-y}" in
+            y|yes|ye) return 0 ;;
+            n|no)     return 1 ;;
+            *) echo "Please enter y/yes or n/no." ;;
+        esac
+    done
 }
 
 setup_shared_links() {
-    local root_dir="$1"
-    local shared_dir="${2:-$root_dir/Shared}"
+    local root_dir="$1" shared_dir="${2:-$1/Shared}"
 
     if [[ ! -d "$shared_dir" ]]; then
         echo "⚠ Warning: Shared folder not found at $shared_dir"
@@ -61,87 +49,94 @@ setup_shared_links() {
     fi
 
     echo "Setting up shared symlinks..."
-    echo "  Root directory: $root_dir"
     echo "  Shared directory: $shared_dir"
-    echo "  Current directory: $PWD"
+    echo "  Target directory: $PWD"
     echo ""
 
-    # macOS: use nullglob + manual dotfile handling (dotglob not available in sh)
+    # macOS: handle dotfiles manually (dotglob not in sh)
     local found_any=false
     for item in "$shared_dir"/* "$shared_dir"/.[!.]*; do
         [[ -e "$item" ]] || continue
         found_any=true
-        local item_name
+        local item_name link_path
         item_name="$(basename "$item")"
-        local link_path="$PWD/$item_name"
-
+        link_path="$PWD/$item_name"
         if [[ -e "$link_path" ]] || [[ -L "$link_path" ]]; then
             echo "⚠ Skipping '$item_name' - already exists"
             continue
         fi
-
         ln -s "$item" "$link_path"
         echo "✓ Created symlink: $item_name"
     done
 
-    if [[ "$found_any" == false ]]; then
-        echo "No items found in $shared_dir"
-    fi
+    [[ "$found_any" == false ]] && echo "No items found in $shared_dir"
 
     echo ""
     echo "✓ Done! All shared items have been symlinked."
 }
 
+resolve_shared_dir() {
+    local root_dir="$1" input="$2"
+    if [[ -z "$input" ]]; then
+        echo "$root_dir/Shared"
+    elif [[ "$input" != /* ]]; then
+        echo "$root_dir/$input"
+    else
+        echo "$input"
+    fi
+}
+
 create_worktree_only() {
-    local root_dir="$1"
+    local root_dir="$1" use_defaults="$2"
     local bare_dir="$root_dir/.bare"
+    local git_dir="$bare_dir"
+    [[ ! -d "$bare_dir" ]] && git_dir="$root_dir/.git"
+
+    if [[ ! -d "$git_dir" ]]; then
+        echo "Error: Git directory not found" >&2; return 1
+    fi
 
     echo "========================================="
     echo "  Git Worktree Creation"
     echo "========================================="
     echo ""
 
-    local git_dir="$bare_dir"
-    if [[ ! -d "$bare_dir" ]]; then
-        git_dir="$root_dir/.git"
-    fi
-
-    if [[ ! -d "$git_dir" ]]; then
-        echo "Error: Git directory not found" >&2
-        return 1
-    fi
-
+    # Worktree path — no default, always prompt
     printf "Enter worktree folder path: "
     read -r worktree_path
     if [[ -z "$worktree_path" ]]; then
-        echo "Error: Worktree folder path is required" >&2
-        return 1
+        echo "Error: Worktree folder path is required" >&2; return 1
     fi
+    [[ "$worktree_path" != /* ]] && worktree_path="$root_dir/$worktree_path"
 
-    if [[ "$worktree_path" != /* ]]; then
-        worktree_path="$root_dir/$worktree_path"
-    fi
-
-    printf "Enter branch name to use (leave empty to use folder name): "
-    read -r branch_name
-    if [[ -z "$branch_name" ]]; then
+    # Branch name
+    local branch_name
+    if [[ "$use_defaults" == true ]]; then
         branch_name="$(basename "$worktree_path")"
-        echo "Using folder name as branch name: $branch_name"
+        echo "Branch name: $branch_name (default)"
+    else
+        printf "Enter branch name (default: folder name '%s'): " "$(basename "$worktree_path")"
+        read -r branch_name
+        branch_name="${branch_name:-$(basename "$worktree_path")}"
     fi
 
-    printf "Enter source branch name (leave empty to use 'main'): "
-    read -r source_branch
-    if [[ -z "$source_branch" ]]; then
+    # Source branch
+    local source_branch
+    if [[ "$use_defaults" == true ]]; then
         source_branch="main"
-        echo "Using 'main' as source branch"
+        echo "Source branch: main (default)"
+    else
+        printf "Enter source branch (default: main): "
+        read -r source_branch
+        source_branch="${source_branch:-main}"
     fi
 
     echo ""
     echo "Configuration:"
     echo "  Root Directory: $root_dir"
-    echo "  Worktree Path: $worktree_path"
-    echo "  Branch Name: $branch_name"
-    echo "  Source Branch: $source_branch"
+    echo "  Worktree Path:  $worktree_path"
+    echo "  Branch:         $branch_name"
+    echo "  Source Branch:  $source_branch"
     echo ""
 
     cd "$git_dir"
@@ -149,54 +144,48 @@ create_worktree_only() {
         echo "✓ Branch '$branch_name' already exists"
     else
         echo "Branch '$branch_name' does not exist"
-        if ! confirm "Create branch '$branch_name' from '$source_branch'?"; then
-            echo "Cancelled. Branch not created." >&2
-            return 1
+        if ! confirm "Create branch '$branch_name' from '$source_branch'?" "$use_defaults"; then
+            echo "Cancelled." >&2; return 1
         fi
-
         if ! git show-ref --quiet --verify "refs/heads/$source_branch" 2>/dev/null; then
-            echo "Error: Source branch '$source_branch' does not exist" >&2
-            return 1
+            echo "Error: Source branch '$source_branch' does not exist" >&2; return 1
         fi
-
         echo "Creating branch '$branch_name' from '$source_branch'..."
         git branch "$branch_name" "$source_branch"
-        echo "✓ Branch created successfully"
+        echo "✓ Branch created"
     fi
 
     echo ""
     echo "Creating worktree at $worktree_path..."
     git worktree add "$worktree_path" "$branch_name"
-    echo "✓ Worktree created successfully"
+    echo "✓ Worktree created"
 
     echo ""
     echo "========================================="
     echo "✓ Worktree creation complete!"
     echo "========================================="
-    echo "You are now in the worktree directory:"
     echo "  $worktree_path"
     echo ""
 }
 
 create_links_only() {
-    local root_dir="$1"
+    local root_dir="$1" use_defaults="$2"
 
     echo "========================================="
     echo "  Setup Shared Symlinks"
     echo "========================================="
     echo ""
 
-    printf "Enter shared folder path (leave empty to use '<root/Shared>'): "
-    read -r custom_shared_dir
-
-    if [[ -z "$custom_shared_dir" ]]; then
-        setup_shared_links "$root_dir"
+    local custom_shared_dir
+    if [[ "$use_defaults" == true ]]; then
+        echo "Shared folder: <root/Shared> (default)"
+        custom_shared_dir=""
     else
-        if [[ "$custom_shared_dir" != /* ]]; then
-            custom_shared_dir="$root_dir/$custom_shared_dir"
-        fi
-        setup_shared_links "$root_dir" "$custom_shared_dir"
+        printf "Enter shared folder path (default: <root/Shared>): "
+        read -r custom_shared_dir
     fi
+
+    setup_shared_links "$root_dir" "$(resolve_shared_dir "$root_dir" "$custom_shared_dir")"
 
     echo ""
     echo "========================================="
@@ -206,61 +195,66 @@ create_links_only() {
 }
 
 create_worktree_with_links() {
-    local root_dir="$1"
+    local root_dir="$1" use_defaults="$2"
     local bare_dir="$root_dir/.bare"
+    local git_dir="$bare_dir"
+    [[ ! -d "$bare_dir" ]] && git_dir="$root_dir/.git"
+
+    if [[ ! -d "$git_dir" ]]; then
+        echo "Error: Git directory not found" >&2; return 1
+    fi
 
     echo "========================================="
     echo "  Git Worktree Creation + Symlinks"
     echo "========================================="
     echo ""
 
-    local git_dir="$bare_dir"
-    if [[ ! -d "$bare_dir" ]]; then
-        git_dir="$root_dir/.git"
-    fi
-
-    if [[ ! -d "$git_dir" ]]; then
-        echo "Error: Git directory not found" >&2
-        return 1
-    fi
-
+    # Worktree path — no default, always prompt
     printf "Enter worktree folder path: "
     read -r worktree_path
     if [[ -z "$worktree_path" ]]; then
-        echo "Error: Worktree folder path is required" >&2
-        return 1
+        echo "Error: Worktree folder path is required" >&2; return 1
     fi
+    [[ "$worktree_path" != /* ]] && worktree_path="$root_dir/$worktree_path"
 
-    if [[ "$worktree_path" != /* ]]; then
-        worktree_path="$root_dir/$worktree_path"
-    fi
-
-    printf "Enter branch name to use (leave empty to use folder name): "
-    read -r branch_name
-    if [[ -z "$branch_name" ]]; then
+    # Branch name
+    local branch_name
+    if [[ "$use_defaults" == true ]]; then
         branch_name="$(basename "$worktree_path")"
-        echo "Using folder name as branch name: $branch_name"
+        echo "Branch name: $branch_name (default)"
+    else
+        printf "Enter branch name (default: folder name '%s'): " "$(basename "$worktree_path")"
+        read -r branch_name
+        branch_name="${branch_name:-$(basename "$worktree_path")}"
     fi
 
-    printf "Enter source branch name (leave empty to use 'main'): "
-    read -r source_branch
-    if [[ -z "$source_branch" ]]; then
+    # Source branch
+    local source_branch
+    if [[ "$use_defaults" == true ]]; then
         source_branch="main"
-        echo "Using 'main' as source branch"
+        echo "Source branch: main (default)"
+    else
+        printf "Enter source branch (default: main): "
+        read -r source_branch
+        source_branch="${source_branch:-main}"
     fi
 
-    printf "Enter shared folder path (leave empty to use '<root/Shared>'): "
-    read -r custom_shared_dir
+    # Shared folder
+    local custom_shared_dir
+    if [[ "$use_defaults" == true ]]; then
+        echo "Shared folder: <root/Shared> (default)"
+        custom_shared_dir=""
+    else
+        printf "Enter shared folder path (default: <root/Shared>): "
+        read -r custom_shared_dir
+    fi
 
     echo ""
     echo "Configuration:"
     echo "  Root Directory: $root_dir"
-    echo "  Worktree Path: $worktree_path"
-    echo "  Branch Name: $branch_name"
-    echo "  Source Branch: $source_branch"
-    if [[ -n "$custom_shared_dir" ]]; then
-        echo "  Shared Folder: $custom_shared_dir"
-    fi
+    echo "  Worktree Path:  $worktree_path"
+    echo "  Branch:         $branch_name"
+    echo "  Source Branch:  $source_branch"
     echo ""
 
     cd "$git_dir"
@@ -268,96 +262,77 @@ create_worktree_with_links() {
         echo "✓ Branch '$branch_name' already exists"
     else
         echo "Branch '$branch_name' does not exist"
-        if ! confirm "Create branch '$branch_name' from '$source_branch'?"; then
-            echo "Cancelled. Branch not created." >&2
-            return 1
+        if ! confirm "Create branch '$branch_name' from '$source_branch'?" "$use_defaults"; then
+            echo "Cancelled." >&2; return 1
         fi
-
         if ! git show-ref --quiet --verify "refs/heads/$source_branch" 2>/dev/null; then
-            echo "Error: Source branch '$source_branch' does not exist" >&2
-            return 1
+            echo "Error: Source branch '$source_branch' does not exist" >&2; return 1
         fi
-
         echo "Creating branch '$branch_name' from '$source_branch'..."
         git branch "$branch_name" "$source_branch"
-        echo "✓ Branch created successfully"
+        echo "✓ Branch created"
     fi
 
     echo ""
     echo "Creating worktree at $worktree_path..."
     git worktree add "$worktree_path" "$branch_name"
-    echo "✓ Worktree created successfully"
+    echo "✓ Worktree created"
 
     echo ""
     cd "$worktree_path"
-    if [[ -z "$custom_shared_dir" ]]; then
-        setup_shared_links "$root_dir"
-    else
-        if [[ "$custom_shared_dir" != /* ]]; then
-            custom_shared_dir="$root_dir/$custom_shared_dir"
-        fi
-        setup_shared_links "$root_dir" "$custom_shared_dir"
-    fi
+    setup_shared_links "$root_dir" "$(resolve_shared_dir "$root_dir" "$custom_shared_dir")"
 
     echo ""
     echo "========================================="
     echo "✓ Worktree creation + symlinks complete!"
     echo "========================================="
-    echo "You are now in the worktree directory:"
     echo "  $worktree_path"
     echo ""
 }
 
+show_help() {
+    echo "Git Worktree Management Tool"
+    echo "============================="
+    echo ""
+    echo "Usage: $(basename "$0") <command> [-y]"
+    echo ""
+    echo "  -y  Accept all defaults (still prompts for values with no default)"
+    echo ""
+    echo "Commands:"
+    echo ""
+    echo "  worktree, wt   Create a new git worktree"
+    echo "  links, ln      Setup shared symlinks (custom path supported)"
+    echo "  all, setup, a  Create worktree and setup symlinks"
+    echo ""
+}
+
 main() {
-    local root_dir
+    local root_dir command="" use_defaults=false
+
+    for arg in "$@"; do
+        case "$arg" in
+            -y) use_defaults=true ;;
+            -*) ;;
+            *)  [[ -z "$command" ]] && command="$arg" ;;
+        esac
+    done
+
     root_dir="$(find_root)"
     if [[ -z "$root_dir" ]]; then
         echo "Error: Could not find repository root" >&2
-        echo "Make sure you're inside a git repository (with .git or .bare folder)" >&2
+        echo "Make sure you're inside a git repository (.git or .bare)" >&2
         return 1
     fi
 
-    if [[ $# -eq 0 ]]; then
-        echo "Git Worktree Management Tool"
-        echo "============================="
-        echo ""
-        echo "Available commands:"
-        echo ""
-        echo "  Worktree only:"
-        echo "    git-worktree worktree     - Create a new git worktree"
-        echo "    git-worktree wt           - Shorthand for worktree"
-        echo ""
-        echo "  Symlinks only:"
-        echo "    git-worktree links        - Setup shared symlinks (with custom path option)"
-        echo "    git-worktree ln           - Shorthand for links"
-        echo ""
-        echo "  Both:"
-        echo "    git-worktree all          - Create worktree and setup symlinks"
-        echo "    git-worktree setup        - Alias for 'all'"
-        echo "    git-worktree a            - Shorthand for 'all'"
-        echo ""
-        return 0
-    fi
-
-    case "$1" in
-        worktree|wt)
-            create_worktree_only "$root_dir"
-            ;;
-        links|ln)
-            create_links_only "$root_dir"
-            ;;
-        all|setup|a)
-            create_worktree_with_links "$root_dir"
-            ;;
+    case "$command" in
+        "")              show_help ;;
+        worktree|wt)     create_worktree_only "$root_dir" "$use_defaults" ;;
+        links|ln)        create_links_only "$root_dir" "$use_defaults" ;;
+        all|setup|a)     create_worktree_with_links "$root_dir" "$use_defaults" ;;
         *)
-            echo "Unknown command: $1" >&2
+            echo "Unknown command: $command" >&2
             echo ""
-            echo "Available commands:"
-            echo "  worktree, wt  - Create worktree only"
-            echo "  links, ln     - Setup symlinks only"
-            echo "  all, setup, a - Create worktree and symlinks"
-            echo ""
-            echo "Run with no arguments to see full help"
+            show_help
             return 1
             ;;
     esac
