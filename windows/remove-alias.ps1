@@ -35,7 +35,7 @@ if ($profileContent -match '(?m)^function (\S+)') {
 $profileContent = $profileContent -replace '(?s)\r?\n# Git worktree management tools\r?\nfunction \S+ \{[^}]*\}', ''
 
 Set-Content $PROFILE $profileContent
-Write-Host "✓ Removed alias '$aliasName' from $PROFILE"
+Write-Host "[OK] Removed alias '$aliasName' from $PROFILE"
 
 Write-Host ""
 Write-Host "Alias removed successfully!"

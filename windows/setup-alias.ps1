@@ -36,8 +36,8 @@ if ($UseDefaults) {
     $aliasName = $defaultAlias
     Write-Host "Using alias: '$aliasName'"
 } else {
-    $input = Read-Host "Enter alias name (default: $defaultAlias)"
-    $aliasName = if ([string]::IsNullOrWhiteSpace($input)) { $defaultAlias } else { $input }
+    $userInput = Read-Host "Enter alias name (default: $defaultAlias)"
+    $aliasName = if ([string]::IsNullOrWhiteSpace($userInput)) { $defaultAlias } else { $userInput }
 }
 
 # Check if the chosen alias is taken by something else
@@ -62,17 +62,17 @@ while ($conflict) {
     Write-Host "Warning: Alias '$aliasName' is already taken: $conflict"
 
     if ($UseDefaults) {
-        Write-Error "Cannot use default alias '$aliasName' with -y — it is already taken."
+        Write-Error "Cannot use default alias '$aliasName' with -y -- it is already taken."
         exit 1
     }
 
-    $input = Read-Host "Enter a different alias name"
-    if ([string]::IsNullOrWhiteSpace($input)) {
+    $userInput = Read-Host "Enter a different alias name"
+    if ([string]::IsNullOrWhiteSpace($userInput)) {
         Write-Host "Alias name cannot be empty."
         $conflict = "placeholder"
         continue
     }
-    $aliasName = $input
+    $aliasName = $userInput
     $conflict = Test-AliasTaken $aliasName
 }
 
@@ -85,10 +85,10 @@ $functionBlock = $nl + "# Git worktree management tools" + $nl +
 if ($profileContent -match "(?s)# Git worktree management tools\s*function \S+ \{[^}]*\}") {
     $profileContent = $profileContent -replace '(?s)# Git worktree management tools\s*function \S+ \{[^}]*\}', $functionBlock.Trim()
     Set-Content $PROFILE $profileContent
-    Write-Host "✓ Updated alias in $PROFILE"
+    Write-Host "[OK] Updated alias in $PROFILE"
 } else {
     Add-Content $PROFILE $functionBlock
-    Write-Host "✓ Added alias to $PROFILE"
+    Write-Host "[OK] Added alias to $PROFILE"
 }
 
 Write-Host ""

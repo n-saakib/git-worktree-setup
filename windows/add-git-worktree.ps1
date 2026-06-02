@@ -1,4 +1,4 @@
-# Git worktree and symlink management script — Windows (PowerShell)
+# Git worktree and symlink management script -- Windows (PowerShell)
 # Usage: git-worktree <command> [-y]
 #   -y  Accept all defaults without prompting (still prompts for required values)
 # Requires: Git for Windows, PowerShell 5+
@@ -33,7 +33,7 @@ function Find-Root {
     $root = (Split-Path $current -Qualifier) + "\"
     while ($current -ne $root) {
         if (Test-Path (Join-Path $current ".bare")) { return $current }
-        # Skip .git check when inside a .bare directory — bare repos can contain
+        # Skip .git check when inside a .bare directory -- bare repos can contain
         # a .git subdir (e.g. created by GitKraken), which is not the worktree root.
         if ((Test-Path (Join-Path $current ".git")) -and (Split-Path $current -Leaf) -ne ".bare") {
             return $current
@@ -72,7 +72,7 @@ function Setup-SharedLinks {
         }
         try {
             New-Item -ItemType SymbolicLink -Path $linkPath -Target $item.FullName | Out-Null
-            Write-Host "✓ Created symlink: $($item.Name)"
+            Write-Host "[OK] Created symlink: $($item.Name)"
         } catch {
             Write-Host "Error creating symlink for '$($item.Name)': $_"
             Write-Host "Tip: Enable Developer Mode or run as Administrator."
@@ -80,7 +80,7 @@ function Setup-SharedLinks {
     }
 
     Write-Host ""
-    Write-Host "✓ Done! All shared items have been symlinked."
+    Write-Host "[OK] Done! All shared items have been symlinked."
 }
 
 function Create-WorktreeOnly {
@@ -97,7 +97,7 @@ function Create-WorktreeOnly {
     Write-Host "========================================="
     Write-Host ""
 
-    # Worktree path — no default, always prompt
+    # Worktree path -- no default, always prompt
     $worktreePath = Read-Host "Enter worktree folder path"
     if ([string]::IsNullOrWhiteSpace($worktreePath)) { Write-Error "Worktree path is required"; return }
     if (-not [System.IO.Path]::IsPathRooted($worktreePath)) { $worktreePath = Join-Path $RootDir $worktreePath }
@@ -132,7 +132,7 @@ function Create-WorktreeOnly {
     try {
         git show-ref --quiet --verify "refs/heads/$branchName" 2>$null
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "✓ Branch '$branchName' already exists"
+            Write-Host "[OK] Branch '$branchName' already exists"
         } else {
             Write-Host "Branch '$branchName' does not exist"
             if (-not (Confirm-Action "Create branch '$branchName' from '$sourceBranch'?" $UseDefaults)) {
@@ -142,17 +142,17 @@ function Create-WorktreeOnly {
             if ($LASTEXITCODE -ne 0) { Write-Error "Source branch '$sourceBranch' does not exist"; return }
             Write-Host "Creating branch '$branchName' from '$sourceBranch'..."
             git branch $branchName $sourceBranch
-            Write-Host "✓ Branch created"
+            Write-Host "[OK] Branch created"
         }
         Write-Host ""
         Write-Host "Creating worktree at $worktreePath..."
         git worktree add $worktreePath $branchName
-        Write-Host "✓ Worktree created"
+        Write-Host "[OK] Worktree created"
     } finally { Pop-Location }
 
     Write-Host ""
     Write-Host "========================================="
-    Write-Host "✓ Worktree creation complete!"
+    Write-Host "[OK] Worktree creation complete!"
     Write-Host "========================================="
     Write-Host "  $worktreePath"
     Write-Host ""
@@ -176,7 +176,7 @@ function Create-LinksOnly {
 
     Write-Host ""
     Write-Host "========================================="
-    Write-Host "✓ Symlink setup complete!"
+    Write-Host "[OK] Symlink setup complete!"
     Write-Host "========================================="
     Write-Host ""
 }
@@ -195,7 +195,7 @@ function Create-WorktreeWithLinks {
     Write-Host "========================================="
     Write-Host ""
 
-    # Worktree path — no default, always prompt
+    # Worktree path -- no default, always prompt
     $worktreePath = Read-Host "Enter worktree folder path"
     if ([string]::IsNullOrWhiteSpace($worktreePath)) { Write-Error "Worktree path is required"; return }
     if (-not [System.IO.Path]::IsPathRooted($worktreePath)) { $worktreePath = Join-Path $RootDir $worktreePath }
@@ -234,7 +234,7 @@ function Create-WorktreeWithLinks {
     try {
         git show-ref --quiet --verify "refs/heads/$branchName" 2>$null
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "✓ Branch '$branchName' already exists"
+            Write-Host "[OK] Branch '$branchName' already exists"
         } else {
             Write-Host "Branch '$branchName' does not exist"
             if (-not (Confirm-Action "Create branch '$branchName' from '$sourceBranch'?" $UseDefaults)) {
@@ -244,12 +244,12 @@ function Create-WorktreeWithLinks {
             if ($LASTEXITCODE -ne 0) { Write-Error "Source branch '$sourceBranch' does not exist"; return }
             Write-Host "Creating branch '$branchName' from '$sourceBranch'..."
             git branch $branchName $sourceBranch
-            Write-Host "✓ Branch created"
+            Write-Host "[OK] Branch created"
         }
         Write-Host ""
         Write-Host "Creating worktree at $worktreePath..."
         git worktree add $worktreePath $branchName
-        Write-Host "✓ Worktree created"
+        Write-Host "[OK] Worktree created"
     } finally { Pop-Location }
 
     Set-Location $worktreePath
@@ -257,7 +257,7 @@ function Create-WorktreeWithLinks {
 
     Write-Host ""
     Write-Host "========================================="
-    Write-Host "✓ Worktree creation + symlinks complete!"
+    Write-Host "[OK] Worktree creation + symlinks complete!"
     Write-Host "========================================="
     Write-Host "  $worktreePath"
     Write-Host ""
