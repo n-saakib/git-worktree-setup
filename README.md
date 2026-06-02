@@ -12,6 +12,7 @@ A cross-platform CLI tool to create and manage [Git worktrees](https://git-scm.c
   - [Linux](#linux)
   - [macOS](#macos)
   - [Windows](#windows)
+- [Uninstall](#uninstall)
 - [Commands](#commands)
 - [Usage Examples](#usage-examples)
 - [How It Works](#how-it-works)
@@ -46,22 +47,22 @@ This tool wraps that workflow into a single interactive command that works from 
 ```bash
 git clone <repo-url> repo-tools
 cd repo-tools
-./install.sh
+./setup-alias.sh
 source ~/.bashrc
 ```
 
-The installer detects your shell (bash/zsh), adds the `git-worktree` alias to the appropriate config file, and makes the script executable.
+Detects your shell (bash/zsh), adds the `git-worktree` alias to the appropriate config file, and makes the script executable.
 
 ### macOS
 
 ```bash
 git clone <repo-url> repo-tools
 cd repo-tools
-./install.sh
+./setup-alias.sh
 source ~/.zshrc   # or ~/.bash_profile if using bash
 ```
 
-The installer detects whether you're on macOS and adds the alias to `.zshrc` (default shell since Catalina) or `.bash_profile`. The macOS script uses `#!/usr/bin/env bash` to pick up Homebrew bash if available, and is safe on the system bash (3.2).
+Detects whether you're on macOS and adds the alias to `.zshrc` (default shell since Catalina) or `.bash_profile`. The macOS script uses `#!/usr/bin/env bash` to pick up Homebrew bash if available, and is safe on the system bash (3.2).
 
 ### Windows
 
@@ -70,13 +71,33 @@ Open PowerShell and run:
 ```powershell
 git clone <repo-url> repo-tools
 cd repo-tools\windows
-.\install.ps1
+.\setup-alias.ps1
 . $PROFILE
 ```
 
-This adds a `git-worktree` function to your PowerShell profile.
+Adds a `git-worktree` function to your PowerShell profile.
 
 > **Note:** Creating symlinks on Windows requires either **Developer Mode** enabled (`Settings > System > Developer Mode`) or running PowerShell **as Administrator**.
+
+---
+
+## Uninstall
+
+To remove the `git-worktree` alias from your shell config:
+
+**Linux / macOS:**
+```bash
+./remove-alias.sh
+source ~/.bashrc   # or ~/.zshrc
+```
+
+**Windows:**
+```powershell
+.\windows\remove-alias.ps1
+. $PROFILE
+```
+
+This removes the alias/function and its comment from your shell config. The scripts themselves are not deleted.
 
 ---
 
@@ -246,14 +267,16 @@ All confirmation prompts default to **yes** — press Enter to accept. The follo
 
 ```
 repo-tools/
-├── install.sh                    # Linux & macOS installer (auto-detects OS + shell)
+├── setup-alias.sh               # Linux & macOS: adds git-worktree alias to shell config
+├── remove-alias.sh              # Linux & macOS: removes git-worktree alias from shell config
 ├── linux/
-│   └── add-git-worktree.sh      # Linux script
+│   └── add-git-worktree.sh     # Linux script
 ├── mac/
-│   └── add-git-worktree.sh      # macOS script (bash 3.2 safe)
+│   └── add-git-worktree.sh     # macOS script (bash 3.2 safe)
 └── windows/
-    ├── add-git-worktree.ps1     # Windows PowerShell script
-    └── install.ps1              # Windows installer
+    ├── add-git-worktree.ps1    # Windows PowerShell script
+    ├── setup-alias.ps1         # Windows: adds git-worktree function to PowerShell profile
+    └── remove-alias.ps1        # Windows: removes git-worktree function from PowerShell profile
 ```
 
 ### Platform Differences
@@ -271,7 +294,7 @@ repo-tools/
 ## Requirements
 
 ### Linux / macOS
-- Bash (any version; macOS Catalina+ uses zsh by default but the installer handles this)
+- Bash (any version; macOS Catalina+ uses zsh by default but `setup-alias.sh` handles this)
 - Git 2.5+
 
 ### Windows
