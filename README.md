@@ -80,7 +80,7 @@ Open PowerShell and run:
 ```powershell
 git clone <repo-url> git-worktree-setup
 cd git-worktree-setup\windows
-.\setup-alias.ps1
+powershell -ExecutionPolicy Bypass -File .\setup-alias.ps1
 . $PROFILE
 ```
 
@@ -89,8 +89,22 @@ Prompts for an alias name (default: `gwt`), checks for conflicts with existing a
 To use defaults silently:
 
 ```powershell
-.\setup-alias.ps1 -y
+powershell -ExecutionPolicy Bypass -File .\setup-alias.ps1 -y
 ```
+
+> **Why `-ExecutionPolicy Bypass`?** Windows blocks unsigned PowerShell scripts by default. The bypass flag allows running this script for the current invocation only — it does not change your system policy.
+>
+> Alternatively you can use the provided `.bat` wrappers which handle this automatically:
+> ```
+> windows\setup-alias.bat
+> windows\setup-alias.bat -y
+> ```
+>
+> Or allow signed local scripts permanently (once):
+> ```powershell
+> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+> ```
+> After that you can run `.\setup-alias.ps1` directly.
 
 > **Note:** Creating symlinks on Windows requires either **Developer Mode** enabled (`Settings > System > Developer Mode`) or running PowerShell **as Administrator**.
 
@@ -108,7 +122,7 @@ source ~/.bashrc   # or ~/.zshrc
 
 **Windows:**
 ```powershell
-.\windows\remove-alias.ps1
+powershell -ExecutionPolicy Bypass -File .\windows\remove-alias.ps1
 . $PROFILE
 ```
 
@@ -317,7 +331,9 @@ git-worktree-setup/
 └── windows/
     ├── add-git-worktree.ps1    # Windows PowerShell script
     ├── setup-alias.ps1         # Windows: creates PowerShell alias
-    └── remove-alias.ps1        # Windows: removes PowerShell alias
+    ├── setup-alias.bat         # Wrapper — runs setup-alias.ps1 without execution policy issues
+    ├── remove-alias.ps1        # Windows: removes PowerShell alias
+    └── remove-alias.bat        # Wrapper — runs remove-alias.ps1 without execution policy issues
 ```
 
 ### Platform Differences
