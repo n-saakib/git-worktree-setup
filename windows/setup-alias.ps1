@@ -76,13 +76,11 @@ while ($conflict) {
     $conflict = Test-AliasTaken $aliasName
 }
 
-$functionBlock = @"
-
-# Git worktree management tools
-function $aliasName {
-    & "$TargetScript" @args
-}
-"@
+$nl = [System.Environment]::NewLine
+$functionBlock = $nl + "# Git worktree management tools" + $nl +
+    "function $aliasName {" + $nl +
+    ('    & "' + $TargetScript + '" @args') + $nl +
+    "}"
 
 if ($profileContent -match "(?s)# Git worktree management tools\s*function \S+ \{[^}]*\}") {
     $profileContent = $profileContent -replace '(?s)# Git worktree management tools\s*function \S+ \{[^}]*\}', $functionBlock.Trim()
