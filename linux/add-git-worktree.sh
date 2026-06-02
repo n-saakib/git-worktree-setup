@@ -82,8 +82,14 @@ resolve_shared_dir() {
 create_worktree_only() {
     local root_dir="$1" use_defaults="$2"
     local bare_dir="$root_dir/.bare"
-    local git_dir="$bare_dir"
-    [[ ! -d "$bare_dir" ]] && git_dir="$root_dir/.git"
+    # For bare repos: run git commands from inside .bare (it IS the repo).
+    # For standard repos: run from the root (parent of .git), not inside .git/.
+    local git_dir
+    if [[ -d "$bare_dir" ]]; then
+        git_dir="$bare_dir"
+    else
+        git_dir="$root_dir"
+    fi
 
     if [[ ! -d "$git_dir" ]]; then
         echo "Error: Git directory not found" >&2; return 1
@@ -186,8 +192,14 @@ create_links_only() {
 create_worktree_with_links() {
     local root_dir="$1" use_defaults="$2"
     local bare_dir="$root_dir/.bare"
-    local git_dir="$bare_dir"
-    [[ ! -d "$bare_dir" ]] && git_dir="$root_dir/.git"
+    # For bare repos: run git commands from inside .bare (it IS the repo).
+    # For standard repos: run from the root (parent of .git), not inside .git/.
+    local git_dir
+    if [[ -d "$bare_dir" ]]; then
+        git_dir="$bare_dir"
+    else
+        git_dir="$root_dir"
+    fi
 
     if [[ ! -d "$git_dir" ]]; then
         echo "Error: Git directory not found" >&2; return 1

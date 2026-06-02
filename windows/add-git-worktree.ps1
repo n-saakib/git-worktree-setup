@@ -82,8 +82,10 @@ function Setup-SharedLinks {
 function Create-WorktreeOnly {
     param([string]$RootDir)
 
+    # For bare repos: run git commands from inside .bare (it IS the repo).
+    # For standard repos: run from the root (parent of .git), not inside .git\.
     $bareDir = Join-Path $RootDir ".bare"
-    $gitDir  = if (Test-Path $bareDir) { $bareDir } else { Join-Path $RootDir ".git" }
+    $gitDir  = if (Test-Path $bareDir) { $bareDir } else { $RootDir }
     if (-not (Test-Path $gitDir)) { Write-Error "Git directory not found"; return }
 
     Write-Host "========================================="
@@ -178,8 +180,10 @@ function Create-LinksOnly {
 function Create-WorktreeWithLinks {
     param([string]$RootDir)
 
+    # For bare repos: run git commands from inside .bare (it IS the repo).
+    # For standard repos: run from the root (parent of .git), not inside .git\.
     $bareDir = Join-Path $RootDir ".bare"
-    $gitDir  = if (Test-Path $bareDir) { $bareDir } else { Join-Path $RootDir ".git" }
+    $gitDir  = if (Test-Path $bareDir) { $bareDir } else { $RootDir }
     if (-not (Test-Path $gitDir)) { Write-Error "Git directory not found"; return }
 
     Write-Host "========================================="
