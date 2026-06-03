@@ -18,6 +18,16 @@ OS="$(uname -s)"
 case "$OS" in
     Linux*)  TARGET_SCRIPT="$SCRIPT_DIR/linux/add-git-worktree.sh" ;;
     Darwin*) TARGET_SCRIPT="$SCRIPT_DIR/mac/add-git-worktree.sh" ;;
+    MINGW*|MSYS*)
+        echo "Git Bash detected. setup-alias.sh does not run on Windows." >&2
+        echo "To set up the alias (including for Git Bash), run from PowerShell or Command Prompt:" >&2
+        echo "" >&2
+        echo "  cd $(cygpath -w "$SCRIPT_DIR")\\windows" >&2
+        echo "  setup-alias.bat" >&2
+        echo "" >&2
+        echo "The Windows installer will detect Git Bash and set up the alias in ~/.bashrc automatically." >&2
+        exit 1
+        ;;
     *)
         echo "Unsupported OS: $OS" >&2
         echo "For Windows, run windows/setup-alias.ps1 instead." >&2
