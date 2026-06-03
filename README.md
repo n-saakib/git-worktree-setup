@@ -37,9 +37,12 @@ This tool wraps that workflow into a single interactive command that works from 
 - **Do both at once** — create a worktree and immediately symlink shared files into it
 - **Works from anywhere** — auto-detects repo root by walking up to find `.bare` or `.git`
 - **Bare repo aware** — designed for monorepo setups with a `.bare` directory
-- **Cross-platform** — separate scripts for Linux, macOS, and Windows
+- **Cross-platform** — separate scripts for Linux, macOS, and Windows with consistent behaviour
 - **Customisable alias** — choose your own alias name at setup (default: `gwt`)
 - **Non-interactive mode** — `-y` flag accepts all defaults, only prompting for required values
+- **Tilde expansion** — `~/path` is expanded correctly in worktree paths on all platforms
+- **Robust error handling** — git failures, missing branches, and symlink errors produce clear messages instead of silent failures or stack traces; symlink failures are counted and reported without aborting
+- **Input safety** — leading/trailing whitespace is trimmed from paths; branch names starting with `-` are handled safely via `--` separators in git commands
 
 ---
 
@@ -54,7 +57,7 @@ cd git-worktree-setup
 source ~/.bashrc
 ```
 
-Detects your shell (bash/zsh), prompts for an alias name (default: `gwt`), checks for conflicts, and adds the alias to your shell config.
+Detects your shell (bash/zsh), prompts for an alias name (default: `gwt`), checks for conflicts, and adds the alias to your shell config. Respects `$ZDOTDIR` for custom zsh config locations.
 
 To skip the alias prompt and use the default:
 
@@ -91,7 +94,7 @@ setup-alias.bat -y
 
 The `.bat` wrappers handle Windows execution policy automatically — no extra configuration needed.
 
-Prompts for an alias name (default: `gwt`), checks for conflicts with existing aliases, and adds a function to your PowerShell profile. Reload the profile when done:
+Prompts for an alias name (default: `gwt`), checks for conflicts with existing aliases, and adds a function to your PowerShell profile (written as UTF-8). Reload the profile when done:
 
 ```powershell
 . $PROFILE
@@ -276,7 +279,7 @@ Setting up shared symlinks...
 ✓ Done! All shared items have been symlinked.
 ```
 
-Relative paths are resolved from the repository root. Absolute paths are used as-is.
+Relative paths are resolved from the repository root. Absolute paths and `~/` paths are used as-is.
 
 ---
 
@@ -285,6 +288,10 @@ Relative paths are resolved from the repository root. Absolute paths are used as
 ### Repository Detection
 
 The script walks up from the current directory looking for `.bare` (bare repo monorepo setup) or `.git` (standard repo). This means it works from **any subdirectory or worktree** — no need to be at the root.
+
+A `.git` directory inside `.bare` is intentionally ignored (some tools like GitKraken create one), so the script correctly identifies the actual repo root.
+
+On Windows, UNC paths (`\\server\share`) are handled safely — the root-finding loop is bounded to prevent infinite traversal.
 
 ```
 /projects/my-repo/
@@ -304,12 +311,29 @@ The `Shared/` folder at the repo root holds files and directories that should be
 - Dotfiles (`.claude`, `.env`, etc.) are included
 - Items that already exist are skipped, not overwritten
 - A custom path can be specified instead of `Shared/`
+- If the shared directory is empty, a message is printed instead of silent no-op
+- Symlink failures are caught and counted — the script continues with remaining items and reports how many failed at the end
+
+### Path Handling
+
+- **Tilde expansion**: `~/worktrees/feature` is expanded to the user's home directory on all platforms
+- **Whitespace trimming**: leading and trailing whitespace is stripped from the worktree path input
+- **Relative paths**: resolved from the repository root
+- **Absolute paths**: used as-is
+
+### Git Argument Safety
+
+All git commands (`git branch`, `git worktree add`) use `--` to separate options from arguments. This prevents branch names starting with `-` (e.g. `-fix-typo`) from being misinterpreted as flags.
+
+Source branch existence is verified before attempting branch creation, and both branch creation and worktree creation failures produce explicit error messages.
 
 ### Alias Detection
 
 `remove-alias` finds the alias by scanning for the script path (`add-git-worktree.sh`) in your shell config — not by alias name. This means it correctly removes the alias even if you renamed it.
 
 Similarly, `setup-alias` detects an existing alias pointing to the script and shows you its name before prompting for a new one.
+
+Setup and removal scripts on Linux handle config files with CRLF line endings (e.g. files edited on Windows) without breaking pattern matching or leaving stray `\r` characters.
 
 ### Y/N Prompts
 
@@ -350,6 +374,10 @@ git-worktree-setup/
 | Dotfile glob | `shopt -s dotglob` | `.[!.]*` pattern | `Get-ChildItem -Force` |
 | Symlinks | `ln -s` | `ln -s` | `New-Item -ItemType SymbolicLink` |
 | Shebang | `#!/bin/bash` | `#!/usr/bin/env bash` | N/A |
+| Output markers | `✓` / `⚠` | `✓` / `⚠` | `[OK]` / `Warning:` |
+| Broken symlink check | `-L` test | `-L` test | `Get-ChildItem` parent scan |
+| Zsh config path | `$ZDOTDIR/.zshrc` | `$ZDOTDIR/.zshrc` | N/A |
+| Profile encoding | N/A | N/A | UTF-8 |
 
 ---
 
