@@ -102,6 +102,21 @@ Prompts for an alias name (default: `gwt`), checks for conflicts with existing a
 . $PROFILE
 ```
 
+**Git Bash on Windows:** If Git Bash is installed, the setup script detects it automatically and offers to also add an alias to `~/.bashrc` pointing at the Linux bash script. This lets you use the same alias from both PowerShell and Git Bash:
+
+```
+Git Bash detected.
+Also set up alias for Git Bash? (Y/n):
+```
+
+The alias in `.bashrc` uses the Git Bash path format (e.g. `/c/Users/you/repo/linux/add-git-worktree.sh`). After setup, activate it in Git Bash:
+
+```bash
+source ~/.bashrc
+```
+
+> **Note:** `setup-alias.sh` blocks on Windows by design — use `windows/setup-alias.bat` (or `.ps1`) for setup on Windows, including Git Bash.
+
 > **Prefer running PowerShell directly?** Use `-ExecutionPolicy Bypass`:
 > ```powershell
 > powershell -ExecutionPolicy Bypass -File .\setup-alias.ps1
