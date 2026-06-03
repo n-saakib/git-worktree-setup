@@ -40,6 +40,8 @@ This tool wraps that workflow into a single interactive command that works from 
 - **Cross-platform** — separate scripts for Linux, macOS, and Windows with consistent behaviour
 - **Customisable alias** — choose your own alias name at setup (default: `gwt`)
 - **Non-interactive mode** — `-y` flag accepts all defaults, only prompting for required values
+- **Flag-based parameters** — pass `-b <branch>` and `-w <path>` to skip interactive prompts; combine with `-y` to run fully non-interactively
+- **Remote branch awareness** — branch lookups check local refs first, then the configured remote if available; remote-only branches are tracked automatically
 - **Tilde expansion** — `~/path` is expanded correctly in worktree paths on all platforms
 - **Robust error handling** — git failures, missing branches, and symlink errors produce clear messages instead of silent failures or stack traces; symlink failures are counted and reported without aborting
 - **Input safety** — leading/trailing whitespace is trimmed from paths; branch names starting with `-` are handled safely via `--` separators in git commands
@@ -167,11 +169,41 @@ Available on both `setup-alias` and the worktree commands.
 | Branch creation | yes | Auto-confirms, no prompt |
 | Worktree path | **none** | Still prompts — required |
 
+### `-w <path>` / `-WorktreePath <path>` (Windows) — worktree path
+
+Pass the worktree folder path directly as a flag instead of entering it interactively.
+
+Applies to: `wt`, `all`, `setup`, `a` commands.
+
 ```bash
-gwt a -y                   # prompts only for worktree path
-gwt wt -y                  # prompts only for worktree path
-gwt ln -y                  # no prompts at all
-./setup-alias.sh -y        # uses alias 'gwt' with no prompt
+gwt wt -w worktrees/feature-auth
+gwt a -w "worktrees/my feature"   # quotes handle spaces
+```
+
+### `-b <branch>` / `-BranchName <branch>` (Windows) — branch name
+
+Pass the branch name directly as a flag. Supports branch names with `/` and other special characters when quoted.
+
+Applies to: `wt`, `all`, `setup`, `a` commands. Has no effect on `ln`/`links` (a warning is printed).
+
+```bash
+gwt wt -b feature/auth
+gwt a -b "feature/my-task"
+```
+
+### Combining flags
+
+| Flags used | Prompts shown |
+|---|---|
+| *(none)* | All prompts |
+| `-y` | Only worktree path |
+| `-w <path>` | Branch name, source branch, shared folder |
+| `-b <branch>` | Worktree path, source branch, shared folder |
+| `-w <path> -b <branch>` | Source branch, shared folder |
+| `-y -w <path> -b <branch>` | **None** — fully non-interactive |
+
+```bash
+gwt a -y -w worktrees/feat -b feature/auth   # zero prompts
 ```
 
 ---
@@ -266,6 +298,68 @@ Creating worktree at /projects/my-repo/worktrees/feature-auth...
 ✓ Worktree creation + symlinks complete!
 ```
 
+### Create a worktree using flags (semi-interactive)
+
+```
+$ gwt wt -w worktrees/feature-auth -b feature/auth
+
+=========================================
+  Git Worktree Creation
+=========================================
+
+Worktree path: /projects/my-repo/worktrees/feature-auth (from -w flag)
+Branch name: feature/auth (from -b flag)
+Enter source branch (default: main):
+
+Configuration:
+  Root Directory: /projects/my-repo
+  Worktree Path:  /projects/my-repo/worktrees/feature-auth
+  Branch:         feature/auth
+  Source Branch:  main
+
+Branch 'feature/auth' does not exist
+Create branch 'feature/auth' from 'main'? (Y/n):
+✓ Branch created
+
+Creating worktree at /projects/my-repo/worktrees/feature-auth...
+✓ Worktree created
+
+=========================================
+✓ Worktree creation complete!
+=========================================
+  /projects/my-repo/worktrees/feature-auth
+```
+
+### Create a worktree fully non-interactively
+
+```
+$ gwt a -y -w worktrees/feature-auth -b feature/auth
+
+=========================================
+  Git Worktree Creation + Symlinks
+=========================================
+
+Worktree path: /projects/my-repo/worktrees/feature-auth (from -w flag)
+Branch name: feature/auth (from -b flag)
+Source branch: main (default)
+Shared folder: <root/Shared> (default)
+
+Configuration:
+  Root Directory: /projects/my-repo
+  Worktree Path:  /projects/my-repo/worktrees/feature-auth
+  Branch:         feature/auth
+  Source Branch:  main
+
+Branch 'feature/auth' does not exist
+Create branch 'feature/auth' from 'main'? (Y/n): Y
+✓ Branch created
+
+Creating worktree at /projects/my-repo/worktrees/feature-auth...
+✓ Worktree created
+...
+✓ Worktree creation + symlinks complete!
+```
+
 ### Setup symlinks with a custom path
 
 ```
@@ -325,7 +419,7 @@ The `Shared/` folder at the repo root holds files and directories that should be
 
 All git commands (`git branch`, `git worktree add`) use `--` to separate options from arguments. This prevents branch names starting with `-` (e.g. `-fix-typo`) from being misinterpreted as flags.
 
-Source branch existence is verified before attempting branch creation, and both branch creation and worktree creation failures produce explicit error messages.
+Source branch existence is verified before attempting branch creation. Both branch creation and worktree creation failures produce explicit error messages. When a remote is configured, branch lookups check both local refs and the remote — branches found only on the remote are fetched automatically for source branches, or tracked directly for target branches.
 
 ### Alias Detection
 
