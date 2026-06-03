@@ -49,6 +49,13 @@ setup_shared_links() {
         return 0
     fi
 
+    if [[ "$(uname -s)" == MINGW* ]] || [[ "$(uname -s)" == MSYS* ]]; then
+        echo "⚠ Warning: Running on Windows (Git Bash). Symlink creation requires"
+        echo "  Developer Mode (Settings > System > Developer Mode) or Administrator"
+        echo "  privileges. Symlinks will fail silently without this."
+        echo ""
+    fi
+
     echo "Setting up shared symlinks..."
     echo "  Shared directory: $shared_dir"
     echo "  Target directory: $PWD"
