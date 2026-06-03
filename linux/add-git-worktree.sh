@@ -30,7 +30,7 @@ confirm() {
     fi
     local response
     while true; do
-        read -p "$prompt (Y/n): " response
+        read -rp "$prompt (Y/n): " response
         response="${response,,}"
         case "${response:-y}" in
             y|yes|ye) return 0 ;;
@@ -54,8 +54,14 @@ setup_shared_links() {
     echo "  Target directory: $PWD"
     echo ""
 
+    local dotglob_was_set=false
+    shopt -q dotglob && dotglob_was_set=true
     shopt -s dotglob
+    local fail_count=0
+    local found_any=false
     for item in "$shared_dir"/*; do
+        [[ -e "$item" ]] || continue
+        found_any=true
         local item_name link_path
         item_name="$(basename "$item")"
         link_path="$PWD/$item_name"
@@ -63,12 +69,23 @@ setup_shared_links() {
             echo "⚠ Skipping '$item_name' - already exists"
             continue
         fi
-        ln -s "$item" "$link_path"
+        if ! ln -s "$item" "$link_path" 2>/dev/null; then
+            fail_count=$((fail_count + 1))
+            echo "⚠ Error creating symlink for '$item_name'"
+            continue
+        fi
         echo "✓ Created symlink: $item_name"
     done
+    [[ "$dotglob_was_set" == true ]] || shopt -u dotglob
+    [[ "$found_any" == false ]] && echo "No items found in $shared_dir"
 
-    echo ""
-    echo "✓ Done! All shared items have been symlinked."
+    if [[ "$fail_count" -gt 0 ]]; then
+        echo ""
+        echo "⚠ Done with $fail_count failed symlink(s)."
+    else
+        echo ""
+        echo "✓ Done! All shared items have been symlinked."
+    fi
 }
 
 # Resolve shared dir from user input (empty = default)
@@ -105,10 +122,14 @@ create_worktree_only() {
     echo ""
 
     # Worktree path — no default, always prompt
-    read -p "Enter worktree folder path: " worktree_path
+    local worktree_path
+    read -rp "Enter worktree folder path: " worktree_path
+    worktree_path="${worktree_path#"${worktree_path%%[![:space:]]*}"}"
+    worktree_path="${worktree_path%"${worktree_path##*[![:space:]]}"}"
     if [[ -z "$worktree_path" ]]; then
         echo "Error: Worktree folder path is required" >&2; return 1
     fi
+    worktree_path="${worktree_path/#\~/$HOME}"
     [[ "$worktree_path" != /* ]] && worktree_path="$root_dir/$worktree_path"
 
     # Branch name — defaults to folder name
@@ -117,7 +138,7 @@ create_worktree_only() {
         branch_name="$(basename "$worktree_path")"
         echo "Branch name: $branch_name (default)"
     else
-        read -p "Enter branch name (default: folder name '$(basename "$worktree_path")'): " branch_name
+        read -rp "Enter branch name (default: folder name '$(basename "$worktree_path")'): " branch_name
         branch_name="${branch_name:-$(basename "$worktree_path")}"
     fi
 
@@ -127,7 +148,7 @@ create_worktree_only() {
         source_branch="main"
         echo "Source branch: main (default)"
     else
-        read -p "Enter source branch (default: main): " source_branch
+        read -rp "Enter source branch (default: main): " source_branch
         source_branch="${source_branch:-main}"
     fi
 
@@ -151,13 +172,17 @@ create_worktree_only() {
             echo "Error: Source branch '$source_branch' does not exist" >&2; return 1
         fi
         echo "Creating branch '$branch_name' from '$source_branch'..."
-        git branch "$branch_name" "$source_branch"
+        if ! git branch -- "$branch_name" "$source_branch"; then
+            echo "Error: Failed to create branch '$branch_name'" >&2; return 1
+        fi
         echo "✓ Branch created"
     fi
 
     echo ""
     echo "Creating worktree at $worktree_path..."
-    git worktree add "$worktree_path" "$branch_name"
+    if ! git worktree add "$worktree_path" -- "$branch_name"; then
+        echo "Error: Failed to create worktree at '$worktree_path'" >&2; return 1
+    fi
     echo "✓ Worktree created"
 
     echo ""
@@ -181,7 +206,7 @@ create_links_only() {
         echo "Shared folder: <root/Shared> (default)"
         custom_shared_dir=""
     else
-        read -p "Enter shared folder path (default: <root/Shared>): " custom_shared_dir
+        read -rp "Enter shared folder path (default: <root/Shared>): " custom_shared_dir
     fi
 
     setup_shared_links "$root_dir" "$(resolve_shared_dir "$root_dir" "$custom_shared_dir")"
@@ -215,10 +240,14 @@ create_worktree_with_links() {
     echo ""
 
     # Worktree path — no default, always prompt
-    read -p "Enter worktree folder path: " worktree_path
+    local worktree_path
+    read -rp "Enter worktree folder path: " worktree_path
+    worktree_path="${worktree_path#"${worktree_path%%[![:space:]]*}"}"
+    worktree_path="${worktree_path%"${worktree_path##*[![:space:]]}"}"
     if [[ -z "$worktree_path" ]]; then
         echo "Error: Worktree folder path is required" >&2; return 1
     fi
+    worktree_path="${worktree_path/#\~/$HOME}"
     [[ "$worktree_path" != /* ]] && worktree_path="$root_dir/$worktree_path"
 
     # Branch name
@@ -227,7 +256,7 @@ create_worktree_with_links() {
         branch_name="$(basename "$worktree_path")"
         echo "Branch name: $branch_name (default)"
     else
-        read -p "Enter branch name (default: folder name '$(basename "$worktree_path")'): " branch_name
+        read -rp "Enter branch name (default: folder name '$(basename "$worktree_path")'): " branch_name
         branch_name="${branch_name:-$(basename "$worktree_path")}"
     fi
 
@@ -237,7 +266,7 @@ create_worktree_with_links() {
         source_branch="main"
         echo "Source branch: main (default)"
     else
-        read -p "Enter source branch (default: main): " source_branch
+        read -rp "Enter source branch (default: main): " source_branch
         source_branch="${source_branch:-main}"
     fi
 
@@ -247,7 +276,7 @@ create_worktree_with_links() {
         echo "Shared folder: <root/Shared> (default)"
         custom_shared_dir=""
     else
-        read -p "Enter shared folder path (default: <root/Shared>): " custom_shared_dir
+        read -rp "Enter shared folder path (default: <root/Shared>): " custom_shared_dir
     fi
 
     echo ""
@@ -270,13 +299,17 @@ create_worktree_with_links() {
             echo "Error: Source branch '$source_branch' does not exist" >&2; return 1
         fi
         echo "Creating branch '$branch_name' from '$source_branch'..."
-        git branch "$branch_name" "$source_branch"
+        if ! git branch -- "$branch_name" "$source_branch"; then
+            echo "Error: Failed to create branch '$branch_name'" >&2; return 1
+        fi
         echo "✓ Branch created"
     fi
 
     echo ""
     echo "Creating worktree at $worktree_path..."
-    git worktree add "$worktree_path" "$branch_name"
+    if ! git worktree add "$worktree_path" -- "$branch_name"; then
+        echo "Error: Failed to create worktree at '$worktree_path'" >&2; return 1
+    fi
     echo "✓ Worktree created"
 
     echo ""
@@ -318,7 +351,7 @@ main() {
         esac
     done
 
-    root_dir="$(find_root)"
+    root_dir="$(find_root)" || true
     if [[ -z "$root_dir" ]]; then
         echo "Error: Could not find repository root" >&2
         echo "Make sure you're inside a git repository (.git or .bare)" >&2

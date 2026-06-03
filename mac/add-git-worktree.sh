@@ -59,6 +59,7 @@ setup_shared_links() {
 
     # macOS: handle dotfiles manually (dotglob not in sh)
     local found_any=false
+    local fail_count=0
     for item in "$shared_dir"/* "$shared_dir"/.[!.]*; do
         [[ -e "$item" ]] || continue
         found_any=true
@@ -69,14 +70,23 @@ setup_shared_links() {
             echo "⚠ Skipping '$item_name' - already exists"
             continue
         fi
-        ln -s "$item" "$link_path"
+        if ! ln -s "$item" "$link_path" 2>/dev/null; then
+            fail_count=$((fail_count + 1))
+            echo "⚠ Error creating symlink for '$item_name'"
+            continue
+        fi
         echo "✓ Created symlink: $item_name"
     done
 
     [[ "$found_any" == false ]] && echo "No items found in $shared_dir"
 
-    echo ""
-    echo "✓ Done! All shared items have been symlinked."
+    if [[ "$fail_count" -gt 0 ]]; then
+        echo ""
+        echo "⚠ Done with $fail_count failed symlink(s)."
+    else
+        echo ""
+        echo "✓ Done! All shared items have been symlinked."
+    fi
 }
 
 resolve_shared_dir() {
@@ -92,6 +102,7 @@ resolve_shared_dir() {
 
 create_worktree_only() {
     local root_dir="$1" use_defaults="$2"
+    local worktree_path
     local bare_dir="$root_dir/.bare"
     # For bare repos: run git commands from inside .bare (it IS the repo).
     # For standard repos: run from the root (parent of .git), not inside .git/.
@@ -114,9 +125,12 @@ create_worktree_only() {
     # Worktree path — no default, always prompt
     printf "Enter worktree folder path: "
     read -r worktree_path
+    worktree_path="${worktree_path#"${worktree_path%%[![:space:]]*}"}"
+    worktree_path="${worktree_path%"${worktree_path##*[![:space:]]}"}"
     if [[ -z "$worktree_path" ]]; then
         echo "Error: Worktree folder path is required" >&2; return 1
     fi
+    worktree_path="${worktree_path/#\~/$HOME}"
     [[ "$worktree_path" != /* ]] && worktree_path="$root_dir/$worktree_path"
 
     # Branch name
@@ -161,13 +175,17 @@ create_worktree_only() {
             echo "Error: Source branch '$source_branch' does not exist" >&2; return 1
         fi
         echo "Creating branch '$branch_name' from '$source_branch'..."
-        git branch "$branch_name" "$source_branch"
+        if ! git branch -- "$branch_name" "$source_branch"; then
+            echo "Error: Failed to create branch '$branch_name'" >&2; return 1
+        fi
         echo "✓ Branch created"
     fi
 
     echo ""
     echo "Creating worktree at $worktree_path..."
-    git worktree add "$worktree_path" "$branch_name"
+    if ! git worktree add "$worktree_path" -- "$branch_name"; then
+        echo "Error: Failed to create worktree at '$worktree_path'" >&2; return 1
+    fi
     echo "✓ Worktree created"
 
     echo ""
@@ -206,6 +224,7 @@ create_links_only() {
 
 create_worktree_with_links() {
     local root_dir="$1" use_defaults="$2"
+    local worktree_path
     local bare_dir="$root_dir/.bare"
     # For bare repos: run git commands from inside .bare (it IS the repo).
     # For standard repos: run from the root (parent of .git), not inside .git/.
@@ -228,9 +247,12 @@ create_worktree_with_links() {
     # Worktree path — no default, always prompt
     printf "Enter worktree folder path: "
     read -r worktree_path
+    worktree_path="${worktree_path#"${worktree_path%%[![:space:]]*}"}"
+    worktree_path="${worktree_path%"${worktree_path##*[![:space:]]}"}"
     if [[ -z "$worktree_path" ]]; then
         echo "Error: Worktree folder path is required" >&2; return 1
     fi
+    worktree_path="${worktree_path/#\~/$HOME}"
     [[ "$worktree_path" != /* ]] && worktree_path="$root_dir/$worktree_path"
 
     # Branch name
@@ -285,13 +307,17 @@ create_worktree_with_links() {
             echo "Error: Source branch '$source_branch' does not exist" >&2; return 1
         fi
         echo "Creating branch '$branch_name' from '$source_branch'..."
-        git branch "$branch_name" "$source_branch"
+        if ! git branch -- "$branch_name" "$source_branch"; then
+            echo "Error: Failed to create branch '$branch_name'" >&2; return 1
+        fi
         echo "✓ Branch created"
     fi
 
     echo ""
     echo "Creating worktree at $worktree_path..."
-    git worktree add "$worktree_path" "$branch_name"
+    if ! git worktree add "$worktree_path" -- "$branch_name"; then
+        echo "Error: Failed to create worktree at '$worktree_path'" >&2; return 1
+    fi
     echo "✓ Worktree created"
 
     echo ""
@@ -333,7 +359,7 @@ main() {
         esac
     done
 
-    root_dir="$(find_root)"
+    root_dir="$(find_root)" || true
     if [[ -z "$root_dir" ]]; then
         echo "Error: Could not find repository root" >&2
         echo "Make sure you're inside a git repository (.git or .bare)" >&2

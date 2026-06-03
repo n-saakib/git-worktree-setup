@@ -11,7 +11,7 @@ SHELL_CONFIGS=()
 CURRENT_SHELL="$(basename "$SHELL")"
 case "$CURRENT_SHELL" in
     zsh)
-        SHELL_CONFIGS+=("$HOME/.zshrc")
+        SHELL_CONFIGS+=("${ZDOTDIR:-$HOME}/.zshrc")
         if [[ "$OS" == "Darwin"* ]] && [[ -f "$HOME/.zprofile" ]]; then
             SHELL_CONFIGS+=("$HOME/.zprofile")
         fi
@@ -23,7 +23,7 @@ case "$CURRENT_SHELL" in
         SHELL_CONFIGS+=("$HOME/.bashrc")
         ;;
     *)
-        SHELL_CONFIGS+=("$HOME/.bashrc" "$HOME/.zshrc")
+        SHELL_CONFIGS+=("$HOME/.bashrc" "${ZDOTDIR:-$HOME}/.zshrc")
         ;;
 esac
 
@@ -33,14 +33,17 @@ for config in "${SHELL_CONFIGS[@]}"; do
     [[ -f "$config" ]] || continue
 
     if grep -qE "^alias [^=]+='.*add-git-worktree\.sh'" "$config" 2>/dev/null; then
-        alias_name="$(grep -E "^alias [^=]+='.*add-git-worktree\.sh'" "$config" | sed "s/^alias \([^=]*\)=.*/\1/" | head -1)"
+        alias_name="$(grep -E "^alias [^=]+='.*add-git-worktree\.sh'" "$config" | tr -d '\r' | sed "s/^alias \([^=]*\)=.*/\1/" | head -1)"
 
         if [[ "$OS" == "Darwin"* ]]; then
             sed -i '' '/^# Git worktree management tools$/d' "$config"
             sed -i '' "/^alias [^=]*='.*add-git-worktree\.sh'/d" "$config"
         else
-            sed -i '/^# Git worktree management tools$/d' "$config"
-            sed -i "/^alias [^=]*='.*add-git-worktree\.sh'/d" "$config"
+            # Remove comment line, alias line, and preceding blank line to avoid orphans
+            sed -i '/^# Git worktree management tools\r\?$/d' "$config"
+            sed -i "/^alias [^=]*='.*add-git-worktree\.sh'\r\?$/d" "$config"
+            # Remove resulting orphaned blank lines (multiple consecutive blank lines -> one)
+            sed -i '/^$/{ N; /^\n$/d; }' "$config"
         fi
         echo "✓ Removed alias '$alias_name' from $config"
         REMOVED=true

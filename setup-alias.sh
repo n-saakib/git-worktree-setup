@@ -37,7 +37,7 @@ SHELL_CONFIGS=()
 CURRENT_SHELL="$(basename "$SHELL")"
 case "$CURRENT_SHELL" in
     zsh)
-        SHELL_CONFIGS+=("$HOME/.zshrc")
+        SHELL_CONFIGS+=("${ZDOTDIR:-$HOME}/.zshrc")
         if [[ "$OS" == "Darwin"* ]] && [[ -f "$HOME/.zprofile" ]]; then
             SHELL_CONFIGS+=("$HOME/.zprofile")
         fi
@@ -49,7 +49,7 @@ case "$CURRENT_SHELL" in
         SHELL_CONFIGS+=("$HOME/.bashrc")
         ;;
     *)
-        SHELL_CONFIGS+=("$HOME/.bashrc" "$HOME/.zshrc")
+        SHELL_CONFIGS+=("$HOME/.bashrc" "${ZDOTDIR:-$HOME}/.zshrc")
         ;;
 esac
 
@@ -58,11 +58,11 @@ EXISTING_ALIAS=""
 EXISTING_CONFIG=""
 for config in "${SHELL_CONFIGS[@]}"; do
     [[ -f "$config" ]] || continue
-    found_line=$(grep -E "^alias [^=]+='.*add-git-worktree\.sh'" "$config" 2>/dev/null | head -1 || true)
+    found_line=$(grep -E "^alias [^=]+='.*add-git-worktree\.sh'" "$config" 2>/dev/null | head -1 | tr -d '\r' || true)
     if [[ -n "$found_line" ]]; then
         EXISTING_ALIAS="$(echo "$found_line" | sed "s/^alias \([^=]*\)=.*/\1/")"
         EXISTING_CONFIG="$config"
-        echo "ℹ Found existing alias: '$EXISTING_ALIAS' → add-git-worktree (in $config)"
+        echo "Found existing alias: '$EXISTING_ALIAS' → add-git-worktree (in $config)"
         break
     fi
 done
@@ -84,9 +84,9 @@ check_alias_taken() {
     local name="$1"
     for config in "${SHELL_CONFIGS[@]}"; do
         [[ -f "$config" ]] || continue
-        if grep -qE "^alias ${name}=" "$config" 2>/dev/null; then
+        if grep -qF "alias ${name}=" "$config" 2>/dev/null; then
             local existing_def
-            existing_def="$(grep -E "^alias ${name}=" "$config" | head -1)"
+            existing_def="$(grep -F "alias ${name}=" "$config" | head -1 | tr -d '\r')"
             if ! echo "$existing_def" | grep -q "add-git-worktree\.sh"; then
                 echo "$config|$existing_def"
                 return 0
@@ -121,17 +121,18 @@ ALIAS_LINE="alias $ALIAS_NAME='$TARGET_SCRIPT'"
 ADDED=false
 
 for config in "${SHELL_CONFIGS[@]}"; do
-    if [[ ! -f "$config" ]] && [[ "$config" != "$HOME/.bashrc" ]] && [[ "$config" != "$HOME/.zshrc" ]]; then
+    if [[ ! -f "$config" ]] && [[ "$config" != "$HOME/.bashrc" ]] && [[ "$config" != "${ZDOTDIR:-$HOME}/.zshrc" ]]; then
         continue
     fi
 
     if grep -qE "^alias [^=]+='.*add-git-worktree\.sh'" "$config" 2>/dev/null; then
-        # Update existing alias (any name) in-place
+        # Update existing alias: delete old line, then append new one
         if [[ "$OS" == "Darwin"* ]]; then
-            sed -i '' "s|^alias [^=]*='.*add-git-worktree\.sh'|$ALIAS_LINE|" "$config"
+            sed -i '' "/^alias [^=]*='.*add-git-worktree\.sh'/d" "$config"
         else
-            sed -i "s|^alias [^=]*='.*add-git-worktree\.sh'|$ALIAS_LINE|" "$config"
+            sed -i "/^alias [^=]*='.*add-git-worktree\.sh'\r\?$/d" "$config"
         fi
+        echo "$ALIAS_LINE" >> "$config"
         echo "✓ Updated alias in $config"
     else
         {
