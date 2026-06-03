@@ -145,6 +145,8 @@ if ($bashExe) {
                 $gitBashPath = '/' + $Matches[1].ToLower() + ($Matches[2] -replace '\\', '/')
             }
 
+            & bash -c "chmod +x '$gitBashPath'" 2>$null
+
             $bashRcPath = Join-Path $HOME ".bashrc"
 
             $bashRcContent = if (Test-Path $bashRcPath) {
