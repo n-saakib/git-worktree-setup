@@ -32,9 +32,9 @@ if ($profileContent -match '(?m)^function (\S+)') {
 }
 
 # Remove the comment + function block
-$profileContent = $profileContent -replace '(?s)\r?\n# Git worktree management tools\r?\nfunction \S+ \{[^}]*\}', ''
+$profileContent = $profileContent -replace '(?s)(?:\r?\n)?# Git worktree management tools\s*function \S+ \{.*?\n\}', ''
 
-Set-Content $PROFILE $profileContent
+Set-Content $PROFILE $profileContent -Encoding UTF8
 Write-Host "[OK] Removed alias '$aliasName' from $PROFILE"
 
 Write-Host ""

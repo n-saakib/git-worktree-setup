@@ -38,16 +38,18 @@ function Find-Root {
         if ((Test-Path (Join-Path $current ".git")) -and (Split-Path $current -Leaf) -ne ".bare") {
             return $current
         }
-        $current = Split-Path $current -Parent
+        $parent = Split-Path $current -Parent
+        if ($parent -eq $current) { return $null }
+        $current = $parent
     }
     return $null
 }
 
 function Resolve-SharedDir {
-    param([string]$RootDir, [string]$Input)
-    if ([string]::IsNullOrWhiteSpace($Input)) { return Join-Path $RootDir "Shared" }
-    if ([System.IO.Path]::IsPathRooted($Input)) { return $Input }
-    return Join-Path $RootDir $Input
+    param([string]$RootDir, [string]$UserPath)
+    if ([string]::IsNullOrWhiteSpace($UserPath)) { return Join-Path $RootDir "Shared" }
+    if ([System.IO.Path]::IsPathRooted($UserPath)) { return $UserPath }
+    return Join-Path $RootDir $UserPath
 }
 
 function Setup-SharedLinks {
@@ -55,7 +57,8 @@ function Setup-SharedLinks {
     if ([string]::IsNullOrWhiteSpace($SharedDir)) { $SharedDir = Join-Path $RootDir "Shared" }
 
     if (-not (Test-Path $SharedDir)) {
-        Write-Host "Warning: Shared folder not found at $SharedDir. Skipping."
+        Write-Host "Warning: Shared folder not found at $SharedDir"
+        Write-Host "Skipping symlink setup"
         return
     }
 
@@ -64,9 +67,22 @@ function Setup-SharedLinks {
     Write-Host "  Target directory: $(Get-Location)"
     Write-Host ""
 
-    foreach ($item in (Get-ChildItem -Path $SharedDir -Force)) {
+    $items = @(Get-ChildItem -Path $SharedDir -Force)
+    if ($items.Count -eq 0) {
+        Write-Host "No items found in $SharedDir"
+    }
+
+    $failCount = 0
+    foreach ($item in $items) {
         $linkPath = Join-Path (Get-Location) $item.Name
+        $existingItem = $null
         if (Test-Path $linkPath) {
+            $existingItem = $true
+        } else {
+            $parentItems = Get-ChildItem (Split-Path $linkPath -Parent) -Force -ErrorAction SilentlyContinue
+            $existingItem = $parentItems | Where-Object { $_.Name -eq $item.Name }
+        }
+        if ($existingItem) {
             Write-Host "Warning: Skipping '$($item.Name)' - already exists"
             continue
         }
@@ -74,23 +90,28 @@ function Setup-SharedLinks {
             New-Item -ItemType SymbolicLink -Path $linkPath -Target $item.FullName | Out-Null
             Write-Host "[OK] Created symlink: $($item.Name)"
         } catch {
+            $failCount++
             Write-Host "Error creating symlink for '$($item.Name)': $_"
             Write-Host "Tip: Enable Developer Mode or run as Administrator."
         }
     }
 
     Write-Host ""
-    Write-Host "[OK] Done! All shared items have been symlinked."
+    if ($failCount -gt 0) {
+        Write-Host "Warning: Done with $failCount failed symlink(s)."
+    } else {
+        Write-Host "[OK] Done! All shared items have been symlinked."
+    }
 }
 
 function Create-WorktreeOnly {
-    param([string]$RootDir)
+    param([string]$RootDir, [bool]$UseDefaults = $false)
 
     # For bare repos: run git commands from inside .bare (it IS the repo).
     # For standard repos: run from the root (parent of .git), not inside .git\.
     $bareDir = Join-Path $RootDir ".bare"
     $gitDir  = if (Test-Path $bareDir) { $bareDir } else { $RootDir }
-    if (-not (Test-Path $gitDir)) { Write-Error "Git directory not found"; return }
+    if (-not (Test-Path $gitDir)) { Write-Host "Error: Git directory not found"; return }
 
     Write-Host "========================================="
     Write-Host "  Git Worktree Creation"
@@ -99,7 +120,9 @@ function Create-WorktreeOnly {
 
     # Worktree path -- no default, always prompt
     $worktreePath = Read-Host "Enter worktree folder path"
-    if ([string]::IsNullOrWhiteSpace($worktreePath)) { Write-Error "Worktree path is required"; return }
+    $worktreePath = $worktreePath.Trim()
+    if ([string]::IsNullOrWhiteSpace($worktreePath)) { Write-Host "Error: Worktree folder path is required"; return }
+    if ($worktreePath.StartsWith("~")) { $worktreePath = $worktreePath -replace '^~', $HOME }
     if (-not [System.IO.Path]::IsPathRooted($worktreePath)) { $worktreePath = Join-Path $RootDir $worktreePath }
 
     $folderName = Split-Path $worktreePath -Leaf
@@ -130,6 +153,7 @@ function Create-WorktreeOnly {
 
     Push-Location $gitDir
     try {
+        $global:LASTEXITCODE = 0
         git show-ref --quiet --verify "refs/heads/$branchName" 2>$null
         if ($LASTEXITCODE -eq 0) {
             Write-Host "[OK] Branch '$branchName' already exists"
@@ -139,14 +163,16 @@ function Create-WorktreeOnly {
                 Write-Host "Cancelled."; return
             }
             git show-ref --quiet --verify "refs/heads/$sourceBranch" 2>$null
-            if ($LASTEXITCODE -ne 0) { Write-Error "Source branch '$sourceBranch' does not exist"; return }
+            if ($LASTEXITCODE -ne 0) { Write-Host "Error: Source branch '$sourceBranch' does not exist"; return }
             Write-Host "Creating branch '$branchName' from '$sourceBranch'..."
-            git branch $branchName $sourceBranch
+            git branch -- "$branchName" "$sourceBranch"
+            if ($LASTEXITCODE -ne 0) { Write-Host "Error: Failed to create branch '$branchName'"; return }
             Write-Host "[OK] Branch created"
         }
         Write-Host ""
         Write-Host "Creating worktree at $worktreePath..."
-        git worktree add $worktreePath $branchName
+        git worktree add "$worktreePath" -- "$branchName"
+        if ($LASTEXITCODE -ne 0) { Write-Host "Error: Failed to create worktree at '$worktreePath'"; return }
         Write-Host "[OK] Worktree created"
     } finally { Pop-Location }
 
@@ -159,7 +185,7 @@ function Create-WorktreeOnly {
 }
 
 function Create-LinksOnly {
-    param([string]$RootDir)
+    param([string]$RootDir, [bool]$UseDefaults = $false)
 
     Write-Host "========================================="
     Write-Host "  Setup Shared Symlinks"
@@ -182,13 +208,13 @@ function Create-LinksOnly {
 }
 
 function Create-WorktreeWithLinks {
-    param([string]$RootDir)
+    param([string]$RootDir, [bool]$UseDefaults = $false)
 
     # For bare repos: run git commands from inside .bare (it IS the repo).
     # For standard repos: run from the root (parent of .git), not inside .git\.
     $bareDir = Join-Path $RootDir ".bare"
     $gitDir  = if (Test-Path $bareDir) { $bareDir } else { $RootDir }
-    if (-not (Test-Path $gitDir)) { Write-Error "Git directory not found"; return }
+    if (-not (Test-Path $gitDir)) { Write-Host "Error: Git directory not found"; return }
 
     Write-Host "========================================="
     Write-Host "  Git Worktree Creation + Symlinks"
@@ -197,7 +223,9 @@ function Create-WorktreeWithLinks {
 
     # Worktree path -- no default, always prompt
     $worktreePath = Read-Host "Enter worktree folder path"
-    if ([string]::IsNullOrWhiteSpace($worktreePath)) { Write-Error "Worktree path is required"; return }
+    $worktreePath = $worktreePath.Trim()
+    if ([string]::IsNullOrWhiteSpace($worktreePath)) { Write-Host "Error: Worktree folder path is required"; return }
+    if ($worktreePath.StartsWith("~")) { $worktreePath = $worktreePath -replace '^~', $HOME }
     if (-not [System.IO.Path]::IsPathRooted($worktreePath)) { $worktreePath = Join-Path $RootDir $worktreePath }
 
     $folderName = Split-Path $worktreePath -Leaf
@@ -232,6 +260,7 @@ function Create-WorktreeWithLinks {
 
     Push-Location $gitDir
     try {
+        $global:LASTEXITCODE = 0
         git show-ref --quiet --verify "refs/heads/$branchName" 2>$null
         if ($LASTEXITCODE -eq 0) {
             Write-Host "[OK] Branch '$branchName' already exists"
@@ -241,19 +270,23 @@ function Create-WorktreeWithLinks {
                 Write-Host "Cancelled."; return
             }
             git show-ref --quiet --verify "refs/heads/$sourceBranch" 2>$null
-            if ($LASTEXITCODE -ne 0) { Write-Error "Source branch '$sourceBranch' does not exist"; return }
+            if ($LASTEXITCODE -ne 0) { Write-Host "Error: Source branch '$sourceBranch' does not exist"; return }
             Write-Host "Creating branch '$branchName' from '$sourceBranch'..."
-            git branch $branchName $sourceBranch
+            git branch -- "$branchName" "$sourceBranch"
+            if ($LASTEXITCODE -ne 0) { Write-Host "Error: Failed to create branch '$branchName'"; return }
             Write-Host "[OK] Branch created"
         }
         Write-Host ""
         Write-Host "Creating worktree at $worktreePath..."
-        git worktree add $worktreePath $branchName
+        git worktree add "$worktreePath" -- "$branchName"
+        if ($LASTEXITCODE -ne 0) { Write-Host "Error: Failed to create worktree at '$worktreePath'"; return }
         Write-Host "[OK] Worktree created"
     } finally { Pop-Location }
 
-    Set-Location $worktreePath
-    Setup-SharedLinks -RootDir $RootDir -SharedDir (Resolve-SharedDir $RootDir $customSharedDir)
+    Push-Location $worktreePath
+    try {
+        Setup-SharedLinks -RootDir $RootDir -SharedDir (Resolve-SharedDir $RootDir $customSharedDir)
+    } finally { Pop-Location }
 
     Write-Host ""
     Write-Host "========================================="
@@ -282,15 +315,16 @@ function Show-Help {
 # Main
 $rootDir = Find-Root
 if ($null -eq $rootDir) {
-    Write-Error "Could not find repository root. Make sure you're inside a git repository (.git or .bare)."
+    Write-Host "Error: Could not find repository root"
+    Write-Host "Make sure you're inside a git repository (.git or .bare)"
     exit 1
 }
 
 switch ($Command) {
     ""                            { Show-Help }
-    { $_ -in "worktree","wt" }   { Create-WorktreeOnly $rootDir }
-    { $_ -in "links","ln" }      { Create-LinksOnly $rootDir }
-    { $_ -in "all","setup","a" } { Create-WorktreeWithLinks $rootDir }
+    { $_ -in "worktree","wt" }   { Create-WorktreeOnly $rootDir $script:UseDefaults }
+    { $_ -in "links","ln" }      { Create-LinksOnly $rootDir $script:UseDefaults }
+    { $_ -in "all","setup","a" } { Create-WorktreeWithLinks $rootDir $script:UseDefaults }
     default {
         Write-Host "Unknown command: $Command"
         Write-Host ""

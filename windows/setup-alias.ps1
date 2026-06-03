@@ -9,7 +9,7 @@ $ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $TargetScript = Join-Path $ScriptDir "add-git-worktree.ps1"
 
 if (-not (Test-Path $TargetScript)) {
-    Write-Error "Script not found at $TargetScript"
+    Write-Host "Error: Script not found at $TargetScript"
     exit 1
 }
 $TargetScript = (Resolve-Path $TargetScript).Path
@@ -21,12 +21,16 @@ if (-not (Test-Path $PROFILE)) {
 }
 
 $profileContent = Get-Content $PROFILE -Raw -ErrorAction SilentlyContinue
+if ($null -eq $profileContent) { $profileContent = "" }
 
 # Check if any function already wraps our script
 $existingAlias = $null
-if ($profileContent -match '(?m)^function (\S+)\s*\{[^}]*add-git-worktree\.ps1[^}]*\}') {
-    $existingAlias = $Matches[1]
-    Write-Host "i Found existing alias: '$existingAlias' -> add-git-worktree (in $PROFILE)"
+if ($profileContent -match '(?s)# Git worktree management tools\s*function (\S+)\s*\{.*?\n\}') {
+    $matchedBlock = $Matches[0]
+    if ($matchedBlock -match 'add-git-worktree\.ps1') {
+        $existingAlias = $Matches[1]
+        Write-Host "Found existing alias: '$existingAlias' -> add-git-worktree (in $PROFILE)"
+    }
 }
 
 $defaultAlias = if ($existingAlias) { $existingAlias } else { "gwt" }
@@ -47,11 +51,12 @@ function Test-AliasTaken {
     $builtIn = Get-Alias $Name -ErrorAction SilentlyContinue
     if ($builtIn) { return "Built-in alias: $($builtIn.Definition)" }
 
-    if ($profileContent -match "(?s)function $Name\s*\{") {
-        $fnLine = ($profileContent -split "`n" | Where-Object { $_ -match "function $Name\s*" } | Select-Object -First 1).Trim()
+    $escapedName = [regex]::Escape($Name)
+    if ($profileContent -match "(?s)(function $escapedName\s*\{.*?\n\})") {
+        $matchedBlock = $Matches[1]
         # Only flag as taken if it does NOT point to our script
-        if ($profileContent -notmatch "add-git-worktree\.ps1") {
-            return "Profile function: $fnLine"
+        if ($matchedBlock -notmatch "add-git-worktree\.ps1") {
+            return "Profile function: $Name"
         }
     }
     return $null
@@ -62,7 +67,7 @@ while ($conflict) {
     Write-Host "Warning: Alias '$aliasName' is already taken: $conflict"
 
     if ($UseDefaults) {
-        Write-Error "Cannot use default alias '$aliasName' with -y -- it is already taken."
+        Write-Host "Error: Cannot use default alias '$aliasName' with -y -- it is already taken."
         exit 1
     }
 
@@ -82,12 +87,12 @@ $functionBlock = $nl + "# Git worktree management tools" + $nl +
     ('    & "' + $TargetScript + '" @args') + $nl +
     "}"
 
-if ($profileContent -match "(?s)# Git worktree management tools\s*function \S+ \{[^}]*\}") {
-    $profileContent = $profileContent -replace '(?s)# Git worktree management tools\s*function \S+ \{[^}]*\}', $functionBlock.Trim()
-    Set-Content $PROFILE $profileContent
+if ($profileContent -match '(?s)# Git worktree management tools\s*function \S+ \{.*?\n\}') {
+    $profileContent = [regex]::Replace($profileContent, '(?s)# Git worktree management tools\s*function \S+ \{.*?\n\}', { param($m) $functionBlock.Trim() })
+    Set-Content $PROFILE $profileContent -Encoding UTF8
     Write-Host "[OK] Updated alias in $PROFILE"
 } else {
-    Add-Content $PROFILE $functionBlock
+    Add-Content $PROFILE $functionBlock -Encoding UTF8
     Write-Host "[OK] Added alias to $PROFILE"
 }
 
