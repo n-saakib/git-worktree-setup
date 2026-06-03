@@ -7,7 +7,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Position=0)][string]$Command = "",
-    [switch]$y
+    [switch]$y,
+    [string]$BranchName = "",
+    [string]$WorktreePath = ""
 )
 
 $UseDefaults = $y.IsPresent
@@ -50,6 +52,29 @@ function Resolve-SharedDir {
     if ([string]::IsNullOrWhiteSpace($UserPath)) { return Join-Path $RootDir "Shared" }
     if ([System.IO.Path]::IsPathRooted($UserPath)) { return $UserPath }
     return Join-Path $RootDir $UserPath
+}
+
+function Test-BranchExists {
+    param([string]$GitDir, [string]$BranchName)
+
+    Push-Location $GitDir
+    try {
+        $global:LASTEXITCODE = 0
+        git show-ref --quiet --verify "refs/heads/$BranchName" 2>$null
+        if ($LASTEXITCODE -eq 0) { return "local" }
+
+        $remote = git remote 2>$null | Select-Object -First 1
+        if ([string]::IsNullOrWhiteSpace($remote)) { return "notfound" }
+
+        $global:LASTEXITCODE = 0
+        git ls-remote --exit-code --heads $remote $BranchName 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { return "remote" }
+        return "notfound"
+    } catch {
+        return "notfound"
+    } finally {
+        Pop-Location
+    }
 }
 
 function Setup-SharedLinks {
@@ -105,7 +130,7 @@ function Setup-SharedLinks {
 }
 
 function Create-WorktreeOnly {
-    param([string]$RootDir, [bool]$UseDefaults = $false)
+    param([string]$RootDir, [bool]$UseDefaults = $false, [string]$FlagBranch = "", [string]$FlagWorktree = "")
 
     # For bare repos: run git commands from inside .bare (it IS the repo).
     # For standard repos: run from the root (parent of .git), not inside .git\.
@@ -118,17 +143,22 @@ function Create-WorktreeOnly {
     Write-Host "========================================="
     Write-Host ""
 
-    # Worktree path -- no default, always prompt
-    $worktreePath = Read-Host "Enter worktree folder path"
-    $worktreePath = $worktreePath.Trim()
+    $worktreePath = if (-not [string]::IsNullOrWhiteSpace($FlagWorktree)) {
+        Write-Host "Worktree path: $FlagWorktree (from -WorktreePath flag)"
+        $FlagWorktree
+    } else {
+        $v = Read-Host "Enter worktree folder path"
+        $v.Trim()
+    }
     if ([string]::IsNullOrWhiteSpace($worktreePath)) { Write-Host "Error: Worktree folder path is required"; return }
     if ($worktreePath.StartsWith("~")) { $worktreePath = $worktreePath -replace '^~', $HOME }
     if (-not [System.IO.Path]::IsPathRooted($worktreePath)) { $worktreePath = Join-Path $RootDir $worktreePath }
 
     $folderName = Split-Path $worktreePath -Leaf
-
-    # Branch name
-    $branchName = if ($UseDefaults) {
+    $branchName = if (-not [string]::IsNullOrWhiteSpace($FlagBranch)) {
+        Write-Host "Branch name: $FlagBranch (from -BranchName flag)"
+        $FlagBranch
+    } elseif ($UseDefaults) {
         Write-Host "Branch name: $folderName (default)"; $folderName
     } else {
         $v = Read-Host "Enter branch name (default: folder name '$folderName')"
@@ -153,26 +183,46 @@ function Create-WorktreeOnly {
 
     Push-Location $gitDir
     try {
-        $global:LASTEXITCODE = 0
-        git show-ref --quiet --verify "refs/heads/$branchName" 2>$null
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "[OK] Branch '$branchName' already exists"
+        $branchLocation = Test-BranchExists $gitDir $branchName
+        if ($branchLocation -eq "local") {
+            Write-Host "[OK] Branch '$branchName' already exists locally"
+        } elseif ($branchLocation -eq "remote") {
+            Write-Host "Branch '$branchName' exists on remote -- will create local tracking branch"
         } else {
             Write-Host "Branch '$branchName' does not exist"
             if (-not (Confirm-Action "Create branch '$branchName' from '$sourceBranch'?" $UseDefaults)) {
                 Write-Host "Cancelled."; return
             }
-            git show-ref --quiet --verify "refs/heads/$sourceBranch" 2>$null
-            if ($LASTEXITCODE -ne 0) { Write-Host "Error: Source branch '$sourceBranch' does not exist"; return }
-            Write-Host "Creating branch '$branchName' from '$sourceBranch'..."
-            git branch -- "$branchName" "$sourceBranch"
-            if ($LASTEXITCODE -ne 0) { Write-Host "Error: Failed to create branch '$branchName'"; return }
-            Write-Host "[OK] Branch created"
+            $srcLocation = Test-BranchExists $gitDir $sourceBranch
+            if ($srcLocation -eq "local") {
+                Write-Host "Creating branch '$branchName' from '$sourceBranch'..."
+                git branch -- "$branchName" "$sourceBranch"
+                if ($LASTEXITCODE -ne 0) { Write-Host "Error: Failed to create branch '$branchName'"; return }
+                Write-Host "[OK] Branch created"
+            } elseif ($srcLocation -eq "remote") {
+                $remote = git remote 2>$null | Select-Object -First 1
+                Write-Host "Source branch '$sourceBranch' found on remote -- fetching..."
+                git fetch $remote $sourceBranch
+                if ($LASTEXITCODE -ne 0) { Write-Host "Error: Failed to fetch source branch '$sourceBranch' from remote"; return }
+                Write-Host "Creating branch '$branchName' from fetched '$sourceBranch'..."
+                git branch -- "$branchName" FETCH_HEAD
+                if ($LASTEXITCODE -ne 0) { Write-Host "Error: Failed to create branch '$branchName'"; return }
+                Write-Host "[OK] Branch created"
+            } else {
+                Write-Host "Error: Source branch '$sourceBranch' does not exist locally or on remote"
+                return
+            }
         }
         Write-Host ""
         Write-Host "Creating worktree at $worktreePath..."
-        git worktree add "$worktreePath" -- "$branchName"
-        if ($LASTEXITCODE -ne 0) { Write-Host "Error: Failed to create worktree at '$worktreePath'"; return }
+        if ($branchLocation -eq "remote") {
+            $remote = git remote 2>$null | Select-Object -First 1
+            git worktree add --track -b "$branchName" "$worktreePath" "$remote/$branchName"
+            if ($LASTEXITCODE -ne 0) { Write-Host "Error: Failed to create worktree at '$worktreePath'"; return }
+        } else {
+            git worktree add "$worktreePath" -- "$branchName"
+            if ($LASTEXITCODE -ne 0) { Write-Host "Error: Failed to create worktree at '$worktreePath'"; return }
+        }
         Write-Host "[OK] Worktree created"
     } finally { Pop-Location }
 
@@ -208,7 +258,7 @@ function Create-LinksOnly {
 }
 
 function Create-WorktreeWithLinks {
-    param([string]$RootDir, [bool]$UseDefaults = $false)
+    param([string]$RootDir, [bool]$UseDefaults = $false, [string]$FlagBranch = "", [string]$FlagWorktree = "")
 
     # For bare repos: run git commands from inside .bare (it IS the repo).
     # For standard repos: run from the root (parent of .git), not inside .git\.
@@ -221,16 +271,22 @@ function Create-WorktreeWithLinks {
     Write-Host "========================================="
     Write-Host ""
 
-    # Worktree path -- no default, always prompt
-    $worktreePath = Read-Host "Enter worktree folder path"
-    $worktreePath = $worktreePath.Trim()
+    $worktreePath = if (-not [string]::IsNullOrWhiteSpace($FlagWorktree)) {
+        Write-Host "Worktree path: $FlagWorktree (from -WorktreePath flag)"
+        $FlagWorktree
+    } else {
+        $v = Read-Host "Enter worktree folder path"
+        $v.Trim()
+    }
     if ([string]::IsNullOrWhiteSpace($worktreePath)) { Write-Host "Error: Worktree folder path is required"; return }
     if ($worktreePath.StartsWith("~")) { $worktreePath = $worktreePath -replace '^~', $HOME }
     if (-not [System.IO.Path]::IsPathRooted($worktreePath)) { $worktreePath = Join-Path $RootDir $worktreePath }
 
     $folderName = Split-Path $worktreePath -Leaf
-
-    $branchName = if ($UseDefaults) {
+    $branchName = if (-not [string]::IsNullOrWhiteSpace($FlagBranch)) {
+        Write-Host "Branch name: $FlagBranch (from -BranchName flag)"
+        $FlagBranch
+    } elseif ($UseDefaults) {
         Write-Host "Branch name: $folderName (default)"; $folderName
     } else {
         $v = Read-Host "Enter branch name (default: folder name '$folderName')"
@@ -260,26 +316,46 @@ function Create-WorktreeWithLinks {
 
     Push-Location $gitDir
     try {
-        $global:LASTEXITCODE = 0
-        git show-ref --quiet --verify "refs/heads/$branchName" 2>$null
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "[OK] Branch '$branchName' already exists"
+        $branchLocation = Test-BranchExists $gitDir $branchName
+        if ($branchLocation -eq "local") {
+            Write-Host "[OK] Branch '$branchName' already exists locally"
+        } elseif ($branchLocation -eq "remote") {
+            Write-Host "Branch '$branchName' exists on remote -- will create local tracking branch"
         } else {
             Write-Host "Branch '$branchName' does not exist"
             if (-not (Confirm-Action "Create branch '$branchName' from '$sourceBranch'?" $UseDefaults)) {
                 Write-Host "Cancelled."; return
             }
-            git show-ref --quiet --verify "refs/heads/$sourceBranch" 2>$null
-            if ($LASTEXITCODE -ne 0) { Write-Host "Error: Source branch '$sourceBranch' does not exist"; return }
-            Write-Host "Creating branch '$branchName' from '$sourceBranch'..."
-            git branch -- "$branchName" "$sourceBranch"
-            if ($LASTEXITCODE -ne 0) { Write-Host "Error: Failed to create branch '$branchName'"; return }
-            Write-Host "[OK] Branch created"
+            $srcLocation = Test-BranchExists $gitDir $sourceBranch
+            if ($srcLocation -eq "local") {
+                Write-Host "Creating branch '$branchName' from '$sourceBranch'..."
+                git branch -- "$branchName" "$sourceBranch"
+                if ($LASTEXITCODE -ne 0) { Write-Host "Error: Failed to create branch '$branchName'"; return }
+                Write-Host "[OK] Branch created"
+            } elseif ($srcLocation -eq "remote") {
+                $remote = git remote 2>$null | Select-Object -First 1
+                Write-Host "Source branch '$sourceBranch' found on remote -- fetching..."
+                git fetch $remote $sourceBranch
+                if ($LASTEXITCODE -ne 0) { Write-Host "Error: Failed to fetch source branch '$sourceBranch' from remote"; return }
+                Write-Host "Creating branch '$branchName' from fetched '$sourceBranch'..."
+                git branch -- "$branchName" FETCH_HEAD
+                if ($LASTEXITCODE -ne 0) { Write-Host "Error: Failed to create branch '$branchName'"; return }
+                Write-Host "[OK] Branch created"
+            } else {
+                Write-Host "Error: Source branch '$sourceBranch' does not exist locally or on remote"
+                return
+            }
         }
         Write-Host ""
         Write-Host "Creating worktree at $worktreePath..."
-        git worktree add "$worktreePath" -- "$branchName"
-        if ($LASTEXITCODE -ne 0) { Write-Host "Error: Failed to create worktree at '$worktreePath'"; return }
+        if ($branchLocation -eq "remote") {
+            $remote = git remote 2>$null | Select-Object -First 1
+            git worktree add --track -b "$branchName" "$worktreePath" "$remote/$branchName"
+            if ($LASTEXITCODE -ne 0) { Write-Host "Error: Failed to create worktree at '$worktreePath'"; return }
+        } else {
+            git worktree add "$worktreePath" -- "$branchName"
+            if ($LASTEXITCODE -ne 0) { Write-Host "Error: Failed to create worktree at '$worktreePath'"; return }
+        }
         Write-Host "[OK] Worktree created"
     } finally { Pop-Location }
 
@@ -300,15 +376,25 @@ function Show-Help {
     Write-Host "Git Worktree Management Tool"
     Write-Host "============================="
     Write-Host ""
-    Write-Host "Usage: git-worktree <command> [-y]"
+    Write-Host "Usage: git-worktree <command> [options]"
     Write-Host ""
-    Write-Host "  -y  Accept all defaults (still prompts for values with no default)"
+    Write-Host "Options:"
+    Write-Host "  -y                   Accept all defaults (still prompts for values with no default)"
+    Write-Host "  -WorktreePath <p>    Worktree folder path (skips the worktree path prompt)"
+    Write-Host "  -BranchName <b>      Branch name (skips the branch name prompt)"
+    Write-Host ""
+    Write-Host "  -WorktreePath and -BranchName apply to worktree commands only (wt, all/setup/a)."
+    Write-Host "  Combined with -y, all prompts are suppressed."
     Write-Host ""
     Write-Host "Commands:"
     Write-Host ""
     Write-Host "  worktree, wt   Create a new git worktree"
     Write-Host "  links, ln      Setup shared symlinks (custom path supported)"
     Write-Host "  all, setup, a  Create worktree and setup symlinks"
+    Write-Host ""
+    Write-Host "Examples:"
+    Write-Host "  git-worktree wt -WorktreePath worktrees/feat -BranchName feature/my-task"
+    Write-Host "  git-worktree a -y -WorktreePath worktrees/feat -BranchName feature/auth"
     Write-Host ""
 }
 
@@ -322,9 +408,14 @@ if ($null -eq $rootDir) {
 
 switch ($Command) {
     ""                            { Show-Help }
-    { $_ -in "worktree","wt" }   { Create-WorktreeOnly $rootDir $script:UseDefaults }
-    { $_ -in "links","ln" }      { Create-LinksOnly $rootDir $script:UseDefaults }
-    { $_ -in "all","setup","a" } { Create-WorktreeWithLinks $rootDir $script:UseDefaults }
+    { $_ -in "worktree","wt" }   { Create-WorktreeOnly $rootDir $script:UseDefaults $script:BranchName $script:WorktreePath }
+    { $_ -in "links","ln" }      {
+        if (-not [string]::IsNullOrWhiteSpace($script:BranchName)) {
+            Write-Host "Warning: -BranchName flag has no effect on the 'links'/'ln' command and will be ignored"
+        }
+        Create-LinksOnly $rootDir $script:UseDefaults
+    }
+    { $_ -in "all","setup","a" } { Create-WorktreeWithLinks $rootDir $script:UseDefaults $script:BranchName $script:WorktreePath }
     default {
         Write-Host "Unknown command: $Command"
         Write-Host ""

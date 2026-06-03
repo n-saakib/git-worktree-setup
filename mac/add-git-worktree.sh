@@ -3,7 +3,7 @@
 # Git worktree and symlink management script — macOS
 # Uses /usr/bin/env bash to pick up Homebrew bash 5+ if available
 # Safe on macOS system bash 3.2 (no bash 4+ features used)
-# Usage: git-worktree <command> [-y]
+# Usage: git-worktree <command> [-y] [-b <branch>] [-w <path>]
 #   -y  Accept all defaults without prompting (still prompts for required values)
 
 set -e
@@ -100,9 +100,32 @@ resolve_shared_dir() {
     fi
 }
 
+# branch_exists_local_or_remote <git_dir> <branch_name>
+# Sets global _BRANCH_LOCATION to: "local", "remote", or "notfound"
+branch_exists_local_or_remote() {
+    local git_dir="$1" branch="$2"
+    _BRANCH_LOCATION="notfound"
+
+    if git -C "$git_dir" show-ref --quiet --verify "refs/heads/$branch" 2>/dev/null; then
+        _BRANCH_LOCATION="local"
+        return 0
+    fi
+
+    local remote
+    remote="$(git -C "$git_dir" remote 2>/dev/null | head -1)"
+    if [[ -z "$remote" ]]; then
+        return 0
+    fi
+
+    if git -C "$git_dir" ls-remote --exit-code --heads "$remote" "$branch" \
+           >/dev/null 2>/dev/null; then
+        _BRANCH_LOCATION="remote"
+    fi
+    return 0
+}
+
 create_worktree_only() {
-    local root_dir="$1" use_defaults="$2"
-    local worktree_path
+    local root_dir="$1" use_defaults="$2" flag_branch="$3" flag_worktree="$4"
     local bare_dir="$root_dir/.bare"
     # For bare repos: run git commands from inside .bare (it IS the repo).
     # For standard repos: run from the root (parent of .git), not inside .git/.
@@ -122,20 +145,27 @@ create_worktree_only() {
     echo "========================================="
     echo ""
 
-    # Worktree path — no default, always prompt
-    printf "Enter worktree folder path: "
-    read -r worktree_path
-    worktree_path="${worktree_path#"${worktree_path%%[![:space:]]*}"}"
-    worktree_path="${worktree_path%"${worktree_path##*[![:space:]]}"}"
-    if [[ -z "$worktree_path" ]]; then
-        echo "Error: Worktree folder path is required" >&2; return 1
+    local worktree_path
+    if [[ -n "$flag_worktree" ]]; then
+        worktree_path="$flag_worktree"
+        echo "Worktree path: $worktree_path (from -w flag)"
+    else
+        printf "Enter worktree folder path: "
+        read -r worktree_path
+        worktree_path="${worktree_path#"${worktree_path%%[![:space:]]*}"}"
+        worktree_path="${worktree_path%"${worktree_path##*[![:space:]]}"}"
+        if [[ -z "$worktree_path" ]]; then
+            echo "Error: Worktree folder path is required" >&2; return 1
+        fi
     fi
     worktree_path="${worktree_path/#\~/$HOME}"
     [[ "$worktree_path" != /* ]] && worktree_path="$root_dir/$worktree_path"
 
-    # Branch name
     local branch_name
-    if [[ "$use_defaults" == true ]]; then
+    if [[ -n "$flag_branch" ]]; then
+        branch_name="$flag_branch"
+        echo "Branch name: $branch_name (from -b flag)"
+    elif [[ "$use_defaults" == true ]]; then
         branch_name="$(basename "$worktree_path")"
         echo "Branch name: $branch_name (default)"
     else
@@ -164,27 +194,52 @@ create_worktree_only() {
     echo ""
 
     cd "$git_dir"
-    if git show-ref --quiet --verify "refs/heads/$branch_name" 2>/dev/null; then
-        echo "✓ Branch '$branch_name' already exists"
+    branch_exists_local_or_remote "$git_dir" "$branch_name"
+    if [[ "$_BRANCH_LOCATION" == "local" ]]; then
+        echo "✓ Branch '$branch_name' already exists locally"
+    elif [[ "$_BRANCH_LOCATION" == "remote" ]]; then
+        echo "Branch '$branch_name' exists on remote — will create local tracking branch"
     else
         echo "Branch '$branch_name' does not exist"
         if ! confirm "Create branch '$branch_name' from '$source_branch'?" "$use_defaults"; then
             echo "Cancelled." >&2; return 1
         fi
-        if ! git show-ref --quiet --verify "refs/heads/$source_branch" 2>/dev/null; then
-            echo "Error: Source branch '$source_branch' does not exist" >&2; return 1
+        branch_exists_local_or_remote "$git_dir" "$source_branch"
+        if [[ "$_BRANCH_LOCATION" == "local" ]]; then
+            echo "Creating branch '$branch_name' from '$source_branch'..."
+            if ! git branch -- "$branch_name" "$source_branch"; then
+                echo "Error: Failed to create branch '$branch_name'" >&2; return 1
+            fi
+            echo "✓ Branch created"
+        elif [[ "$_BRANCH_LOCATION" == "remote" ]]; then
+            local remote
+            remote="$(git -C "$git_dir" remote | head -1)"
+            echo "Source branch '$source_branch' found on remote — fetching..."
+            if ! git fetch "$remote" "$source_branch"; then
+                echo "Error: Failed to fetch source branch '$source_branch' from remote" >&2; return 1
+            fi
+            echo "Creating branch '$branch_name' from fetched '$source_branch'..."
+            if ! git branch -- "$branch_name" FETCH_HEAD; then
+                echo "Error: Failed to create branch '$branch_name'" >&2; return 1
+            fi
+            echo "✓ Branch created"
+        else
+            echo "Error: Source branch '$source_branch' does not exist locally or on remote" >&2; return 1
         fi
-        echo "Creating branch '$branch_name' from '$source_branch'..."
-        if ! git branch -- "$branch_name" "$source_branch"; then
-            echo "Error: Failed to create branch '$branch_name'" >&2; return 1
-        fi
-        echo "✓ Branch created"
     fi
 
     echo ""
     echo "Creating worktree at $worktree_path..."
-    if ! git worktree add "$worktree_path" -- "$branch_name"; then
-        echo "Error: Failed to create worktree at '$worktree_path'" >&2; return 1
+    if [[ "$_BRANCH_LOCATION" == "remote" ]]; then
+        local remote
+        remote="$(git -C "$git_dir" remote | head -1)"
+        if ! git worktree add --track -b "$branch_name" "$worktree_path" "$remote/$branch_name"; then
+            echo "Error: Failed to create worktree at '$worktree_path'" >&2; return 1
+        fi
+    else
+        if ! git worktree add "$worktree_path" -- "$branch_name"; then
+            echo "Error: Failed to create worktree at '$worktree_path'" >&2; return 1
+        fi
     fi
     echo "✓ Worktree created"
 
@@ -223,8 +278,7 @@ create_links_only() {
 }
 
 create_worktree_with_links() {
-    local root_dir="$1" use_defaults="$2"
-    local worktree_path
+    local root_dir="$1" use_defaults="$2" flag_branch="$3" flag_worktree="$4"
     local bare_dir="$root_dir/.bare"
     # For bare repos: run git commands from inside .bare (it IS the repo).
     # For standard repos: run from the root (parent of .git), not inside .git/.
@@ -244,20 +298,27 @@ create_worktree_with_links() {
     echo "========================================="
     echo ""
 
-    # Worktree path — no default, always prompt
-    printf "Enter worktree folder path: "
-    read -r worktree_path
-    worktree_path="${worktree_path#"${worktree_path%%[![:space:]]*}"}"
-    worktree_path="${worktree_path%"${worktree_path##*[![:space:]]}"}"
-    if [[ -z "$worktree_path" ]]; then
-        echo "Error: Worktree folder path is required" >&2; return 1
+    local worktree_path
+    if [[ -n "$flag_worktree" ]]; then
+        worktree_path="$flag_worktree"
+        echo "Worktree path: $worktree_path (from -w flag)"
+    else
+        printf "Enter worktree folder path: "
+        read -r worktree_path
+        worktree_path="${worktree_path#"${worktree_path%%[![:space:]]*}"}"
+        worktree_path="${worktree_path%"${worktree_path##*[![:space:]]}"}"
+        if [[ -z "$worktree_path" ]]; then
+            echo "Error: Worktree folder path is required" >&2; return 1
+        fi
     fi
     worktree_path="${worktree_path/#\~/$HOME}"
     [[ "$worktree_path" != /* ]] && worktree_path="$root_dir/$worktree_path"
 
-    # Branch name
     local branch_name
-    if [[ "$use_defaults" == true ]]; then
+    if [[ -n "$flag_branch" ]]; then
+        branch_name="$flag_branch"
+        echo "Branch name: $branch_name (from -b flag)"
+    elif [[ "$use_defaults" == true ]]; then
         branch_name="$(basename "$worktree_path")"
         echo "Branch name: $branch_name (default)"
     else
@@ -296,27 +357,52 @@ create_worktree_with_links() {
     echo ""
 
     cd "$git_dir"
-    if git show-ref --quiet --verify "refs/heads/$branch_name" 2>/dev/null; then
-        echo "✓ Branch '$branch_name' already exists"
+    branch_exists_local_or_remote "$git_dir" "$branch_name"
+    if [[ "$_BRANCH_LOCATION" == "local" ]]; then
+        echo "✓ Branch '$branch_name' already exists locally"
+    elif [[ "$_BRANCH_LOCATION" == "remote" ]]; then
+        echo "Branch '$branch_name' exists on remote — will create local tracking branch"
     else
         echo "Branch '$branch_name' does not exist"
         if ! confirm "Create branch '$branch_name' from '$source_branch'?" "$use_defaults"; then
             echo "Cancelled." >&2; return 1
         fi
-        if ! git show-ref --quiet --verify "refs/heads/$source_branch" 2>/dev/null; then
-            echo "Error: Source branch '$source_branch' does not exist" >&2; return 1
+        branch_exists_local_or_remote "$git_dir" "$source_branch"
+        if [[ "$_BRANCH_LOCATION" == "local" ]]; then
+            echo "Creating branch '$branch_name' from '$source_branch'..."
+            if ! git branch -- "$branch_name" "$source_branch"; then
+                echo "Error: Failed to create branch '$branch_name'" >&2; return 1
+            fi
+            echo "✓ Branch created"
+        elif [[ "$_BRANCH_LOCATION" == "remote" ]]; then
+            local remote
+            remote="$(git -C "$git_dir" remote | head -1)"
+            echo "Source branch '$source_branch' found on remote — fetching..."
+            if ! git fetch "$remote" "$source_branch"; then
+                echo "Error: Failed to fetch source branch '$source_branch' from remote" >&2; return 1
+            fi
+            echo "Creating branch '$branch_name' from fetched '$source_branch'..."
+            if ! git branch -- "$branch_name" FETCH_HEAD; then
+                echo "Error: Failed to create branch '$branch_name'" >&2; return 1
+            fi
+            echo "✓ Branch created"
+        else
+            echo "Error: Source branch '$source_branch' does not exist locally or on remote" >&2; return 1
         fi
-        echo "Creating branch '$branch_name' from '$source_branch'..."
-        if ! git branch -- "$branch_name" "$source_branch"; then
-            echo "Error: Failed to create branch '$branch_name'" >&2; return 1
-        fi
-        echo "✓ Branch created"
     fi
 
     echo ""
     echo "Creating worktree at $worktree_path..."
-    if ! git worktree add "$worktree_path" -- "$branch_name"; then
-        echo "Error: Failed to create worktree at '$worktree_path'" >&2; return 1
+    if [[ "$_BRANCH_LOCATION" == "remote" ]]; then
+        local remote
+        remote="$(git -C "$git_dir" remote | head -1)"
+        if ! git worktree add --track -b "$branch_name" "$worktree_path" "$remote/$branch_name"; then
+            echo "Error: Failed to create worktree at '$worktree_path'" >&2; return 1
+        fi
+    else
+        if ! git worktree add "$worktree_path" -- "$branch_name"; then
+            echo "Error: Failed to create worktree at '$worktree_path'" >&2; return 1
+        fi
     fi
     echo "✓ Worktree created"
 
@@ -336,9 +422,15 @@ show_help() {
     echo "Git Worktree Management Tool"
     echo "============================="
     echo ""
-    echo "Usage: $(basename "$0") <command> [-y]"
+    echo "Usage: $(basename "$0") <command> [options]"
     echo ""
-    echo "  -y  Accept all defaults (still prompts for values with no default)"
+    echo "Options:"
+    echo "  -y              Accept all defaults (still prompts for values with no default)"
+    echo "  -w <path>       Worktree folder path (skips the worktree path prompt)"
+    echo "  -b <branch>     Branch name (skips the branch name prompt)"
+    echo ""
+    echo "  -w and -b apply to worktree commands only (wt, all/setup/a)."
+    echo "  Combined with -y, all prompts are suppressed."
     echo ""
     echo "Commands:"
     echo ""
@@ -346,16 +438,38 @@ show_help() {
     echo "  links, ln      Setup shared symlinks (custom path supported)"
     echo "  all, setup, a  Create worktree and setup symlinks"
     echo ""
+    echo "Examples:"
+    echo "  $(basename "$0") wt -w worktrees/feat -b feature/my-task"
+    echo "  $(basename "$0") a -y -w worktrees/feat -b feature/auth"
+    echo ""
 }
 
 main() {
     local root_dir command="" use_defaults=false
+    local flag_branch="" flag_worktree=""
 
-    for arg in "$@"; do
-        case "$arg" in
-            -y) use_defaults=true ;;
-            -*) ;;
-            *)  [[ -z "$command" ]] && command="$arg" ;;
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -y)
+                use_defaults=true
+                shift ;;
+            -b)
+                if [[ $# -lt 2 || -z "$2" ]]; then
+                    echo "Error: -b requires a branch name argument" >&2; return 1
+                fi
+                flag_branch="$2"
+                shift 2 ;;
+            -w)
+                if [[ $# -lt 2 || -z "$2" ]]; then
+                    echo "Error: -w requires a worktree path argument" >&2; return 1
+                fi
+                flag_worktree="$2"
+                shift 2 ;;
+            -*)
+                echo "Error: Unknown flag: $1" >&2; return 1 ;;
+            *)
+                [[ -z "$command" ]] && command="$1"
+                shift ;;
         esac
     done
 
@@ -368,9 +482,13 @@ main() {
 
     case "$command" in
         "")              show_help ;;
-        worktree|wt)     create_worktree_only "$root_dir" "$use_defaults" ;;
-        links|ln)        create_links_only "$root_dir" "$use_defaults" ;;
-        all|setup|a)     create_worktree_with_links "$root_dir" "$use_defaults" ;;
+        worktree|wt)     create_worktree_only "$root_dir" "$use_defaults" "$flag_branch" "$flag_worktree" ;;
+        links|ln)
+            if [[ -n "$flag_branch" ]]; then
+                echo "Warning: -b flag has no effect on the 'links'/'ln' command and will be ignored" >&2
+            fi
+            create_links_only "$root_dir" "$use_defaults" ;;
+        all|setup|a)     create_worktree_with_links "$root_dir" "$use_defaults" "$flag_branch" "$flag_worktree" ;;
         *)
             echo "Unknown command: $command" >&2
             echo ""
