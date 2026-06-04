@@ -144,7 +144,6 @@ function Create-WorktreeOnly {
     Write-Host ""
 
     $worktreePath = if (-not [string]::IsNullOrWhiteSpace($FlagWorktree)) {
-        Write-Host "Worktree path: $FlagWorktree (from -WorktreePath flag)"
         $FlagWorktree
     } else {
         $v = Read-Host "Enter worktree folder path"
@@ -153,6 +152,7 @@ function Create-WorktreeOnly {
     if ([string]::IsNullOrWhiteSpace($worktreePath)) { Write-Host "Error: Worktree folder path is required"; return }
     if ($worktreePath.StartsWith("~")) { $worktreePath = $worktreePath -replace '^~', $HOME }
     if (-not [System.IO.Path]::IsPathRooted($worktreePath)) { $worktreePath = Join-Path $RootDir $worktreePath }
+    if (-not [string]::IsNullOrWhiteSpace($FlagWorktree)) { Write-Host "Worktree path: $worktreePath (from -WorktreePath flag)" }
 
     $folderName = Split-Path $worktreePath -Leaf
     $branchName = if (-not [string]::IsNullOrWhiteSpace($FlagBranch)) {
@@ -275,7 +275,6 @@ function Create-WorktreeWithLinks {
     Write-Host ""
 
     $worktreePath = if (-not [string]::IsNullOrWhiteSpace($FlagWorktree)) {
-        Write-Host "Worktree path: $FlagWorktree (from -WorktreePath flag)"
         $FlagWorktree
     } else {
         $v = Read-Host "Enter worktree folder path"
@@ -284,6 +283,7 @@ function Create-WorktreeWithLinks {
     if ([string]::IsNullOrWhiteSpace($worktreePath)) { Write-Host "Error: Worktree folder path is required"; return }
     if ($worktreePath.StartsWith("~")) { $worktreePath = $worktreePath -replace '^~', $HOME }
     if (-not [System.IO.Path]::IsPathRooted($worktreePath)) { $worktreePath = Join-Path $RootDir $worktreePath }
+    if (-not [string]::IsNullOrWhiteSpace($FlagWorktree)) { Write-Host "Worktree path: $worktreePath (from -WorktreePath flag)" }
 
     $folderName = Split-Path $worktreePath -Leaf
     $branchName = if (-not [string]::IsNullOrWhiteSpace($FlagBranch)) {

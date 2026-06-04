@@ -148,7 +148,6 @@ create_worktree_only() {
     local worktree_path
     if [[ -n "$flag_worktree" ]]; then
         worktree_path="$flag_worktree"
-        echo "Worktree path: $worktree_path (from -w flag)"
     else
         read -rp "Enter worktree folder path: " worktree_path
         worktree_path="${worktree_path#"${worktree_path%%[![:space:]]*}"}"
@@ -159,6 +158,7 @@ create_worktree_only() {
     fi
     worktree_path="${worktree_path/#\~/$HOME}"
     [[ "$worktree_path" != /* ]] && worktree_path="$root_dir/$worktree_path"
+    [[ -n "$flag_worktree" ]] && echo "Worktree path: $worktree_path (from -w flag)"
 
     local branch_name
     if [[ -n "$flag_branch" ]]; then
@@ -299,7 +299,6 @@ create_worktree_with_links() {
     local worktree_path
     if [[ -n "$flag_worktree" ]]; then
         worktree_path="$flag_worktree"
-        echo "Worktree path: $worktree_path (from -w flag)"
     else
         read -rp "Enter worktree folder path: " worktree_path
         worktree_path="${worktree_path#"${worktree_path%%[![:space:]]*}"}"
@@ -310,6 +309,7 @@ create_worktree_with_links() {
     fi
     worktree_path="${worktree_path/#\~/$HOME}"
     [[ "$worktree_path" != /* ]] && worktree_path="$root_dir/$worktree_path"
+    [[ -n "$flag_worktree" ]] && echo "Worktree path: $worktree_path (from -w flag)"
 
     local branch_name
     if [[ -n "$flag_branch" ]]; then
