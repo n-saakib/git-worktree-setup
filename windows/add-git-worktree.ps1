@@ -165,25 +165,28 @@ function Create-WorktreeOnly {
         if ([string]::IsNullOrWhiteSpace($v)) { $folderName } else { $v }
     }
 
-    # Source branch
-    $sourceBranch = if ($UseDefaults) {
-        Write-Host "Source branch: main (default)"; "main"
-    } else {
-        $v = Read-Host "Enter source branch (default: main)"
-        if ([string]::IsNullOrWhiteSpace($v)) { "main" } else { $v }
-    }
-
-    Write-Host ""
-    Write-Host "Configuration:"
-    Write-Host "  Root Directory: $RootDir"
-    Write-Host "  Worktree Path:  $worktreePath"
-    Write-Host "  Branch:         $branchName"
-    Write-Host "  Source Branch:  $sourceBranch"
-    Write-Host ""
-
     Push-Location $gitDir
     try {
         $branchLocation = Test-BranchExists $gitDir $branchName
+
+        $sourceBranch = ""
+        if ($branchLocation -eq "notfound") {
+            $sourceBranch = if ($UseDefaults) {
+                Write-Host "Source branch: main (default)"; "main"
+            } else {
+                $v = Read-Host "Enter source branch (default: main)"
+                if ([string]::IsNullOrWhiteSpace($v)) { "main" } else { $v }
+            }
+        }
+
+        Write-Host ""
+        Write-Host "Configuration:"
+        Write-Host "  Root Directory: $RootDir"
+        Write-Host "  Worktree Path:  $worktreePath"
+        Write-Host "  Branch:         $branchName"
+        if (-not [string]::IsNullOrWhiteSpace($sourceBranch)) { Write-Host "  Source Branch:  $sourceBranch" }
+        Write-Host ""
+
         if ($branchLocation -eq "local") {
             Write-Host "[OK] Branch '$branchName' already exists locally"
         } elseif ($branchLocation -eq "remote") {
@@ -293,30 +296,34 @@ function Create-WorktreeWithLinks {
         if ([string]::IsNullOrWhiteSpace($v)) { $folderName } else { $v }
     }
 
-    $sourceBranch = if ($UseDefaults) {
-        Write-Host "Source branch: main (default)"; "main"
-    } else {
-        $v = Read-Host "Enter source branch (default: main)"
-        if ([string]::IsNullOrWhiteSpace($v)) { "main" } else { $v }
-    }
-
-    $customSharedDir = if ($UseDefaults) {
-        Write-Host "Shared folder: <root/Shared> (default)"; ""
-    } else {
-        Read-Host "Enter shared folder path (default: <root/Shared>)"
-    }
-
-    Write-Host ""
-    Write-Host "Configuration:"
-    Write-Host "  Root Directory: $RootDir"
-    Write-Host "  Worktree Path:  $worktreePath"
-    Write-Host "  Branch:         $branchName"
-    Write-Host "  Source Branch:  $sourceBranch"
-    Write-Host ""
-
     Push-Location $gitDir
     try {
         $branchLocation = Test-BranchExists $gitDir $branchName
+
+        $sourceBranch = ""
+        if ($branchLocation -eq "notfound") {
+            $sourceBranch = if ($UseDefaults) {
+                Write-Host "Source branch: main (default)"; "main"
+            } else {
+                $v = Read-Host "Enter source branch (default: main)"
+                if ([string]::IsNullOrWhiteSpace($v)) { "main" } else { $v }
+            }
+        }
+
+        $customSharedDir = if ($UseDefaults) {
+            Write-Host "Shared folder: <root/Shared> (default)"; ""
+        } else {
+            Read-Host "Enter shared folder path (default: <root/Shared>)"
+        }
+
+        Write-Host ""
+        Write-Host "Configuration:"
+        Write-Host "  Root Directory: $RootDir"
+        Write-Host "  Worktree Path:  $worktreePath"
+        Write-Host "  Branch:         $branchName"
+        if (-not [string]::IsNullOrWhiteSpace($sourceBranch)) { Write-Host "  Source Branch:  $sourceBranch" }
+        Write-Host ""
+
         if ($branchLocation -eq "local") {
             Write-Host "[OK] Branch '$branchName' already exists locally"
         } elseif ($branchLocation -eq "remote") {

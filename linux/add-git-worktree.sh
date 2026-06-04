@@ -172,13 +172,18 @@ create_worktree_only() {
         branch_name="${branch_name:-$(basename "$worktree_path")}"
     fi
 
-    local source_branch
-    if [[ "$use_defaults" == true ]]; then
-        source_branch="main"
-        echo "Source branch: main (default)"
-    else
-        read -rp "Enter source branch (default: main): " source_branch
-        source_branch="${source_branch:-main}"
+    cd "$git_dir"
+    branch_exists_local_or_remote "$git_dir" "$branch_name"
+
+    local source_branch=""
+    if [[ "$_BRANCH_LOCATION" == "notfound" ]]; then
+        if [[ "$use_defaults" == true ]]; then
+            source_branch="main"
+            echo "Source branch: main (default)"
+        else
+            read -rp "Enter source branch (default: main): " source_branch
+            source_branch="${source_branch:-main}"
+        fi
     fi
 
     echo ""
@@ -186,11 +191,9 @@ create_worktree_only() {
     echo "  Root Directory: $root_dir"
     echo "  Worktree Path:  $worktree_path"
     echo "  Branch:         $branch_name"
-    echo "  Source Branch:  $source_branch"
+    [[ -n "$source_branch" ]] && echo "  Source Branch:  $source_branch"
     echo ""
 
-    cd "$git_dir"
-    branch_exists_local_or_remote "$git_dir" "$branch_name"
     if [[ "$_BRANCH_LOCATION" == "local" ]]; then
         echo "✓ Branch '$branch_name' already exists locally"
     elif [[ "$_BRANCH_LOCATION" == "remote" ]]; then
@@ -320,13 +323,18 @@ create_worktree_with_links() {
         branch_name="${branch_name:-$(basename "$worktree_path")}"
     fi
 
-    local source_branch
-    if [[ "$use_defaults" == true ]]; then
-        source_branch="main"
-        echo "Source branch: main (default)"
-    else
-        read -rp "Enter source branch (default: main): " source_branch
-        source_branch="${source_branch:-main}"
+    cd "$git_dir"
+    branch_exists_local_or_remote "$git_dir" "$branch_name"
+
+    local source_branch=""
+    if [[ "$_BRANCH_LOCATION" == "notfound" ]]; then
+        if [[ "$use_defaults" == true ]]; then
+            source_branch="main"
+            echo "Source branch: main (default)"
+        else
+            read -rp "Enter source branch (default: main): " source_branch
+            source_branch="${source_branch:-main}"
+        fi
     fi
 
     # Shared folder
@@ -343,11 +351,9 @@ create_worktree_with_links() {
     echo "  Root Directory: $root_dir"
     echo "  Worktree Path:  $worktree_path"
     echo "  Branch:         $branch_name"
-    echo "  Source Branch:  $source_branch"
+    [[ -n "$source_branch" ]] && echo "  Source Branch:  $source_branch"
     echo ""
 
-    cd "$git_dir"
-    branch_exists_local_or_remote "$git_dir" "$branch_name"
     if [[ "$_BRANCH_LOCATION" == "local" ]]; then
         echo "✓ Branch '$branch_name' already exists locally"
     elif [[ "$_BRANCH_LOCATION" == "remote" ]]; then
