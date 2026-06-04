@@ -91,6 +91,7 @@ setup_shared_links() {
 # Resolve shared dir from user input (empty = default)
 resolve_shared_dir() {
     local root_dir="$1" input="$2"
+    input="${input/#\~/$HOME}"
     if [[ -z "$input" ]]; then
         echo "$root_dir/Shared"
     elif [[ "$input" != /* ]]; then
@@ -260,13 +261,21 @@ create_links_only() {
 
     local custom_shared_dir
     if [[ "$use_defaults" == true ]]; then
-        echo "Shared folder: <root/Shared> (default)"
         custom_shared_dir=""
     else
         read -rp "Enter shared folder path (default: <root/Shared>): " custom_shared_dir
+        custom_shared_dir="${custom_shared_dir#"${custom_shared_dir%%[![:space:]]*}"}"
+        custom_shared_dir="${custom_shared_dir%"${custom_shared_dir##*[![:space:]]}"}"
     fi
 
-    setup_shared_links "$root_dir" "$(resolve_shared_dir "$root_dir" "$custom_shared_dir")"
+    local resolved_shared_dir
+    resolved_shared_dir="$(resolve_shared_dir "$root_dir" "$custom_shared_dir")"
+    if [[ "$use_defaults" == true ]]; then
+        echo "Shared folder: $resolved_shared_dir (default)"
+    else
+        echo "Shared folder: $resolved_shared_dir"
+    fi
+    setup_shared_links "$root_dir" "$resolved_shared_dir"
 
     echo ""
     echo "========================================="
@@ -340,11 +349,16 @@ create_worktree_with_links() {
     # Shared folder
     local custom_shared_dir
     if [[ "$use_defaults" == true ]]; then
-        echo "Shared folder: <root/Shared> (default)"
         custom_shared_dir=""
     else
         read -rp "Enter shared folder path (default: <root/Shared>): " custom_shared_dir
+        custom_shared_dir="${custom_shared_dir#"${custom_shared_dir%%[![:space:]]*}"}"
+        custom_shared_dir="${custom_shared_dir%"${custom_shared_dir##*[![:space:]]}"}"
     fi
+
+    local resolved_shared_dir
+    resolved_shared_dir="$(resolve_shared_dir "$root_dir" "$custom_shared_dir")"
+    [[ "$use_defaults" == true ]] && echo "Shared folder: $resolved_shared_dir (default)"
 
     echo ""
     echo "Configuration:"
@@ -352,6 +366,7 @@ create_worktree_with_links() {
     echo "  Worktree Path:  $worktree_path"
     echo "  Branch:         $branch_name"
     [[ -n "$source_branch" ]] && echo "  Source Branch:  $source_branch"
+    echo "  Shared Folder:  $resolved_shared_dir"
     echo ""
 
     if [[ "$_BRANCH_LOCATION" == "local" ]]; then
@@ -404,7 +419,7 @@ create_worktree_with_links() {
 
     echo ""
     cd "$worktree_path"
-    setup_shared_links "$root_dir" "$(resolve_shared_dir "$root_dir" "$custom_shared_dir")"
+    setup_shared_links "$root_dir" "$resolved_shared_dir"
 
     echo ""
     echo "========================================="

@@ -49,6 +49,9 @@ function Find-Root {
 
 function Resolve-SharedDir {
     param([string]$RootDir, [string]$UserPath)
+    if (-not [string]::IsNullOrWhiteSpace($UserPath) -and $UserPath.StartsWith("~")) {
+        $UserPath = $UserPath -replace '^~', $HOME
+    }
     if ([string]::IsNullOrWhiteSpace($UserPath)) { return Join-Path $RootDir "Shared" }
     if ([System.IO.Path]::IsPathRooted($UserPath)) { return $UserPath }
     return Join-Path $RootDir $UserPath
@@ -246,12 +249,18 @@ function Create-LinksOnly {
     Write-Host ""
 
     $customSharedDir = if ($UseDefaults) {
-        Write-Host "Shared folder: <root/Shared> (default)"; ""
+        ""
     } else {
-        Read-Host "Enter shared folder path (default: <root/Shared>)"
+        (Read-Host "Enter shared folder path (default: <root/Shared>)").Trim()
+    }
+    $resolvedSharedDir = Resolve-SharedDir $RootDir $customSharedDir
+    if ($UseDefaults) {
+        Write-Host "Shared folder: $resolvedSharedDir (default)"
+    } else {
+        Write-Host "Shared folder: $resolvedSharedDir"
     }
 
-    Setup-SharedLinks -RootDir $RootDir -SharedDir (Resolve-SharedDir $RootDir $customSharedDir)
+    Setup-SharedLinks -RootDir $RootDir -SharedDir $resolvedSharedDir
 
     Write-Host ""
     Write-Host "========================================="
@@ -311,10 +320,11 @@ function Create-WorktreeWithLinks {
         }
 
         $customSharedDir = if ($UseDefaults) {
-            Write-Host "Shared folder: <root/Shared> (default)"; ""
+            ""
         } else {
-            Read-Host "Enter shared folder path (default: <root/Shared>)"
+            (Read-Host "Enter shared folder path (default: <root/Shared>)").Trim()
         }
+        $resolvedSharedDir = Resolve-SharedDir $RootDir $customSharedDir
 
         Write-Host ""
         Write-Host "Configuration:"
@@ -322,6 +332,7 @@ function Create-WorktreeWithLinks {
         Write-Host "  Worktree Path:  $worktreePath"
         Write-Host "  Branch:         $branchName"
         if (-not [string]::IsNullOrWhiteSpace($sourceBranch)) { Write-Host "  Source Branch:  $sourceBranch" }
+        Write-Host "  Shared Folder:  $resolvedSharedDir"
         Write-Host ""
 
         if ($branchLocation -eq "local") {
@@ -368,7 +379,7 @@ function Create-WorktreeWithLinks {
 
     Push-Location $worktreePath
     try {
-        Setup-SharedLinks -RootDir $RootDir -SharedDir (Resolve-SharedDir $RootDir $customSharedDir)
+        Setup-SharedLinks -RootDir $RootDir -SharedDir $resolvedSharedDir
     } finally { Pop-Location }
 
     Write-Host ""
