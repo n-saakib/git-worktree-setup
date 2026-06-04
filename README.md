@@ -173,7 +173,7 @@ Available on both `setup-alias` and the worktree commands.
 
 ### `-w <path>` / `-WorktreePath <path>` (Windows) — worktree path
 
-Pass the worktree folder path directly as a flag instead of entering it interactively.
+Pass the worktree folder path directly as a flag instead of entering it interactively. Relative paths are resolved from the repository root.
 
 Applies to: `wt`, `all`, `setup`, `a` commands.
 
@@ -414,8 +414,8 @@ The `Shared/` folder at the repo root holds files and directories that should be
 
 - **Tilde expansion**: `~/worktrees/feature` is expanded to the user's home directory on all platforms
 - **Whitespace trimming**: leading and trailing whitespace is stripped from the worktree path input
-- **Relative paths**: resolved from the repository root
-- **Absolute paths**: used as-is
+- **Relative paths**: paths like `Hotfix/abc` are resolved from the repository root (the directory containing `.bare` or `.git`) — not from the current working directory or home directory
+- **Absolute paths**: paths starting with `/` on Linux/macOS or a drive letter (e.g. `C:\`) on Windows are used as-is, as are `~/` paths after tilde expansion
 
 ### Git Argument Safety
 
