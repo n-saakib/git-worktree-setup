@@ -34,10 +34,12 @@ function Find-Root {
     $current = (Get-Location).Path
     $root = (Split-Path $current -Qualifier) + "\"
     while ($current -ne $root) {
-        if (Test-Path (Join-Path $current ".bare")) { return $current }
+        if (Test-Path (Join-Path $current ".bare") -PathType Container) { return $current }
         # Skip .git check when inside a .bare directory -- bare repos can contain
         # a .git subdir (e.g. created by GitKraken), which is not the worktree root.
-        if ((Test-Path (Join-Path $current ".git")) -and (Split-Path $current -Leaf) -ne ".bare") {
+        # Use -PathType Container to ignore the .git FILE present in git worktrees;
+        # only a .git DIRECTORY marks the actual repo root.
+        if ((Test-Path (Join-Path $current ".git") -PathType Container) -and (Split-Path $current -Leaf) -ne ".bare") {
             return $current
         }
         $parent = Split-Path $current -Parent
